@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="CustomSwitch" parent="Theme.AppCompat.Light">
+        <item name="colorControlActivated">@color/accent_blue</item>
+        <item name="colorSwitchThumbNormal">@color/white</item>
+        <item name="android:colorForeground">@color/text_secondary</item>
+    </style>
+
+
+    <style name="ActionButton">
+        <item name="cornerSize">50%</item>
+    </style>
+
+
+
+    <style name="CalendarDayHeader">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/duty_text_secondary</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">@font/poppins_semi_bold</item>
+        <item name="android:letterSpacing">0.05</item>
+    </style>
+
+    <!-- Legend Item Style -->
+    <style name="LegendItem">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+    </style>
+
+    <!-- Legend Text Style -->
+    <style name="LegendText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:textColor">@color/duty_text_secondary</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:fontFamily">@font/poppins_semi_bold</item>
+        <item name="android:letterSpacing">0.05</item>
+    </style>
+
+    <style name="WeekLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/secondary</item>
+    </style>
+
+    <style name="BottomDialogStyle">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@style/BottomDialogAnimation</item>
+    </style>
+
+    <style name="BottomDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/slide_up</item>
+        <item name="android:windowExitAnimation">@anim/slide_down</item>
+    </style>
+
+
+
+</resources>

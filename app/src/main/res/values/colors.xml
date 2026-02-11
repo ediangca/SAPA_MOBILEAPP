@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+
+    <color name="color_blue_1">#3775a4</color>
+    <color name="color_blue_2">#4799cf</color>
+    <color name="color_blue_3">#78cfff</color>
+    <color name="color_blue_4">#6cbae5</color>
+    <color name="color_blue_5">#0447b7</color>
+    <color name="color_blue_6">#048eff</color>
+
+    <color name="color_light_1">#dbdbdb</color>
+    <color name="color_light_2">#e4e4e2</color>
+    <color name="color_light_3">#a8d6da</color>
+
+    <color name="color_white_1">#ffffff</color>
+    <color name="color_white_2">#AEFFFFFF</color>
+    <color name="color_white_3">#737373</color>
+
+    <color name="color_orange_1">#ff8c00</color>
+    <color name="color_orange_2">#ffbe00</color>
+    <color name="color_orange_3">#ffc000</color>
+
+    <color name="color_brown_1">#683604</color>
+    <color name="color_brown_2">#8b4b00</color>
+
+    <color name="overlay">#8A3775A4</color>
+    <color name="overlay_blue">#7F003366</color>
+
+    <color name="primary">#003366</color>
+    <color name="secondary">#359EFF</color>
+    <color name="success">#009688</color>
+    <color name="danger">#F44336</color>
+    <color name="warning">#FFC107</color>
+
+    <color name="background_dark">#0F1419</color>
+    <color name="background_light">#AEFFFFFF</color>
+    <color name="card_background">#1A2332</color>
+
+    <!-- Text Colors -->
+    <color name="text_secondary">#8B92A0</color>
+    <color name="text_dark">#FF424242</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_blue">#4A9FFF</color>
+    <color name="accent_green">#00C48C</color>
+    <color name="accent_red">#FF4D4F</color>
+
+    <!-- Status Colors -->
+    <color name="status_pending_bg">#1A4A9FFF</color>
+    <color name="status_approved_bg">#1A00C48C</color>
+
+    <!-- Primary/Secondary (for your existing theme) -->
+    <color name="primary_text">#4A9FFF</color>
+    <color name="secondary_text">#8B92A0</color>
+
+
+    <color name="duty_background">#0B1929</color>
+    <color name="duty_card_bg">#162B42</color>
+    <color name="duty_info_bg">#0F1F2F</color>
+
+    <!-- Text Colors -->
+    <color name="duty_text_secondary">#6B7C93</color>
+
+    <!-- Accent Colors -->
+    <color name="duty_accent">#00D9A0</color>
+    <color name="duty_accent_light">#1AE5AC</color>
+
+    <!-- Status Colors -->
+    <color name="duty_status_current">#00D9A0</color>
+    <color name="duty_status_upcoming">#4A9FFF</color>
+
+    <!-- Hospital/Location Colors -->
+    <color name="duty_hospital_green">#00D9A0</color>
+    <color name="duty_hospital_blue">#4A9FFF</color>
+    <color name="duty_hospital_orange">#FF8A3D</color>
+
+    <!-- Border Colors -->
+    <color name="duty_info_border">#1A3A52</color>
+    <color name="duty_divider">#1E3548</color>
+
+    <!-- Calendar Colors -->
+    <color name="duty_calendar_selected">#00D9A0</color>
+    <color name="duty_calendar_today">#162B42</color>
+
+
+    <color name="hospital_a">#10B981</color>
+    <color name="hospital_b">#38BDF8</color>
+    <color name="hospital_c">#F59E0B</color>
+    <color name="hospital_d">#A78BFA</color>
+    <color name="hospital_e">#FB7185</color>
+
+    <color name="hospital_f">#00FFA8</color>
+    <color name="hospital_g">#00B0FF</color>
+    <color name="hospital_h">#FF9F00</color>
+    <color name="hospital_i">#3F00FF</color>
+    <color name="hospital_j">#FF0027</color>
+
+    <color name="school_a">#10B981</color>
+    <color name="school_b">#38BDF8</color>
+    <color name="school_c">#F59E0B</color>
+    <color name="school_d">#A78BFA</color>
+
+    <color name="navy_dark">#0A192F</color>
+    <color name="card_dark">#112240</color>
+    <color name="medical_green">#10B981</color>
+    <color name="amber">#F59E0B</color>
+    <color name="text_muted">#94A3B8</color>
+
+
+
+</resources>
