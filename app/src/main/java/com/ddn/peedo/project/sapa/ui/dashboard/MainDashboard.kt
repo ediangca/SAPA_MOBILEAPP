@@ -64,6 +64,7 @@ class MainDashboard : AppCompatActivity() {
     }
 
     private fun onInit() {
+
         homeFragment = HomeFragment()
         schoolFragment = SchoolFragment()
         scheduleFragment = ScheduleFragment()
@@ -97,9 +98,9 @@ class MainDashboard : AppCompatActivity() {
                 navMenuOnItemSelectedListener(item)
             }
 
-            binding.scanQR.setOnClickListener {
-                onQrScanClicked()
-            }
+//            binding.scanQR.setOnClickListener {
+//                onQrScanClicked()
+//            }
 
         }
     }
@@ -200,7 +201,6 @@ class MainDashboard : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-
     private fun navMenuOnItemSelectedListener(it: MenuItem?): Boolean {
 //        bundle = Bundle()
 //        bundle.putParcelable("user", user)
@@ -298,7 +298,6 @@ class MainDashboard : AppCompatActivity() {
         qrDialog!!.show()
         startCamera()   // ✅ camera AFTER dialog
     }
-
 
     private fun stopCamera() {
         cameraProvider?.unbindAll()

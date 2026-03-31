@@ -29,6 +29,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
+import com.ddn.peedo.project.sapa.store.SessionManager
 
 
 class ScheduleFragment : Fragment() {
@@ -39,6 +40,7 @@ class ScheduleFragment : Fragment() {
     private val status = arrayOf(
         "ALL", "PENDING", "CONFIRM", "DECLINE", "CANCEL REQUEST", "CANCELED"
     )
+    private lateinit var session: SessionManager;
 
     private var selectedItem = "ALL"
 
@@ -125,6 +127,7 @@ class ScheduleFragment : Fragment() {
             // slot.hospitalID
             // slot.schoolID
         }
+
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
     }
@@ -403,13 +406,19 @@ class ScheduleFragment : Fragment() {
         updateEmptyState(filtered)
     }
 
-
-
     @RequiresApi(Build.VERSION_CODES.O)
     private fun loadSchedule() {
         showLoading()
 
         lifecycleScope.launch {
+
+//            session = SessionManager(requireContext());
+//            val user = session.getUser()
+//            val pri = session.getPrivileges()
+//
+//            Log.d("ScheduleFragment_INFO", "Session User: $user")
+//            Log.d("ScheduleFragment_INFO", "Session Privileges: $pri")
+
             try {
                 val response = RetrofitClient.create(requireContext()).getSchedule()
 

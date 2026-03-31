@@ -16,7 +16,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.LoginActivity
 import com.ddn.peedo.project.sapa.databinding.FragmentProfileBinding
-import com.ddn.peedo.project.sapa.store.TokenManager
+import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.ui.dashboard.MainDashboard
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import kotlinx.coroutines.launch
@@ -54,14 +54,14 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val tokenManager = TokenManager(requireContext())
+        val session = SessionManager(requireContext())
 
         binding.btnLogout.setOnClickListener {
-            showLogoutConfirmation(tokenManager)
+            showLogoutConfirmation(session)
         }
     }
 
-    private fun showLogoutConfirmation(tokenManager: TokenManager) {
+    private fun showLogoutConfirmation(session: SessionManager) {
         SweetAlertUtil.showConfirm(
             requireContext(),
             "Sign Out",
@@ -69,15 +69,15 @@ class ProfileFragment : Fragment() {
             confirmText = "Yes, Logout",
             cancelText = "Cancel"
         ) {
-            performLogout(tokenManager)
+            performLogout(session)
         }
     }
 
-    private fun performLogout(tokenManager: TokenManager) {
+    private fun performLogout(session: SessionManager) {
         lifecycleScope.launch {
             try {
                 // 1️⃣ Clear token
-                tokenManager.clearToken()
+                session.clearSession()
 
                 // 2️⃣ Navigate to Login
                 val intent = Intent(requireContext(), LoginActivity::class.java).apply {

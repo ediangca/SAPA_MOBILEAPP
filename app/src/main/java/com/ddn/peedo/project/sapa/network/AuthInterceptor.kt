@@ -1,12 +1,12 @@
 package com.ddn.peedo.project.sapa.network
 
-import com.ddn.peedo.project.sapa.store.TokenManager
 import android.content.Context
 import com.ddn.peedo.project.sapa.LoginActivity
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import android.content.Intent
+import com.ddn.peedo.project.sapa.store.SessionManager
 
 class AuthInterceptor(
     private val context: Context
@@ -15,7 +15,7 @@ class AuthInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
 
         val token = runBlocking {
-            TokenManager(context).getToken()
+            SessionManager(context).getToken()
         }
 
         val request = if (!token.isNullOrEmpty()) {
@@ -32,7 +32,7 @@ class AuthInterceptor(
         // 🔐 GLOBAL AUTH GUARD (Middleware behavior)
         if (response.code == 401) {
             runBlocking {
-                TokenManager(context).clearToken()
+                SessionManager(context).clearSession()
             }
 
             val intent = Intent(context, LoginActivity::class.java).apply {

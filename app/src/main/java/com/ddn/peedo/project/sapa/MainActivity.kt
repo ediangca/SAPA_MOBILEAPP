@@ -21,7 +21,7 @@ import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
-import com.ddn.peedo.project.sapa.store.TokenManager
+import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.ui.dashboard.MainDashboard
 import com.ddn.peedo.project.sapa.utils.JwtUtils
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
@@ -165,8 +165,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             delay(1200) // optional splash delay
 
-            val tokenManager = TokenManager(this@MainActivity)
-            val token = tokenManager.getToken()
+            val session = SessionManager(this@MainActivity)
+            val token = session.getToken()
 
             if (token.isNullOrEmpty()) {
                 goToLogin()
@@ -174,7 +174,7 @@ class MainActivity : AppCompatActivity() {
             }
             // 🔑 JWT LOCAL EXPIRATION CHECK (LIKE WEB)
             if (JwtUtils.isTokenExpired(token)) {
-                tokenManager.clearToken()
+                session.clearSession()
                 goToLogin()
             } else {
                 goToDashboard()

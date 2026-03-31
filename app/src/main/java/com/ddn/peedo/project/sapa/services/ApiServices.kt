@@ -8,7 +8,9 @@ import com.ddn.peedo.project.sapa.model.AuthResponse
 import com.ddn.peedo.project.sapa.model.Information
 import com.ddn.peedo.project.sapa.model.School
 import com.ddn.peedo.project.sapa.model.VwAppointedStudent
+import com.ddn.peedo.project.sapa.model.VwPrivilege
 import com.ddn.peedo.project.sapa.model.VwSlot
+import com.ddn.peedo.project.sapa.model.VwUser
 import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.Path
@@ -33,6 +35,19 @@ interface ApiService {
     suspend fun authenticate(
         @Body request: AuthRequest
     ): Response<AuthResponse>
+
+    //-----------------Users-----------------//
+    @GET("Users/GetUserbyUsername")
+    suspend fun getUserByUsername(
+        @Query("id") username: String
+    ): Response<VwUser>
+
+
+    //-----------------Privileges-----------------//
+    @GET("Privileges/Role/{roleId}")
+    suspend fun getPrivilegeByRole(
+        @Path("roleId") roleId: String
+    ): Response<List<VwPrivilege>>
 
 
     //-----------------Schools-----------------//

@@ -67,6 +67,8 @@ class ScheduleAdapter(
     private var isScanning = false
     private lateinit var soundPool: SoundPool
     private var soundId: Int = 0
+    val dateFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+    val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a") // 👈 12-hour format
 
     inner class ScheduleViewHolder(
         val binding: ItemScheduleBinding
@@ -189,11 +191,18 @@ class ScheduleAdapter(
                     qrScan.setOnClickListener {
                         if (!isWithinSlotTime(slot.startTime, slot.endTime)) {
 
+                            val startTime = LocalTime.parse(slot.startTime, dateFormatter)
+                            val endTime = LocalTime.parse(slot.endTime, dateFormatter)
+
+
+                            val adjustedStart = startTime.minusHours(1)   // 1 hour before
+                            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
+
                             SweetAlertUtil.showWarning(
                                 context,
                                 "Not Allowed",
                                 "QR scanning is only allowed between\n" +
-                                        "${to12Hour(slot.startTime)} - ${to12Hour(slot.endTime)}"
+                                        "${adjustedStart.format(timeFormatter)} - ${adjustedEnd.format(timeFormatter)}"
                             )
 
                             return@setOnClickListener
@@ -332,13 +341,34 @@ class ScheduleAdapter(
         if (start.isNullOrBlank() || end.isNullOrBlank()) return false
 
         return try {
-            val formatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
-            val startTime = LocalTime.parse(start, formatter)
-            val endTime = LocalTime.parse(end, formatter)
+            val startTime = LocalTime.parse(start, dateFormatter)
+            val endTime = LocalTime.parse(end, dateFormatter)
+
+            // ✅ Adjusted window
+            val adjustedStart = startTime.minusHours(1)   // 1 hour before
+            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
+
+
             val now = LocalTime.now()
 
-            now.isAfter(startTime) && now.isBefore(endTime)
+            Log.d("TIME_CHECK", "Now: $now | Start: $startTime | End: $endTime")
+
+            Log.d("TIME_CHECK", " 1hr allowance Now: $now | Start: $adjustedStart | End: $adjustedEnd")
+//            now.isAfter(startTime) && now.isBefore(endTime)
+//            if (startTime <= endTime) {
+            // ✅ NORMAL CASE (same day)
+//            now >= adjustedStart && now <= adjustedEnd
+
+            if (adjustedStart <= adjustedEnd) {
+//                now >= startTime && now <= endTime
+                now.isAfter(adjustedStart) && now.isBefore(adjustedEnd)
+            } else {
+                // 🌙 OVERNIGHT CASE (crosses midnight)
+//                now >= startTime || now <= endTime
+//                now >= adjustedStart || now <= adjustedEnd
+                now.isAfter(adjustedStart) && now.isBefore(adjustedEnd)
+            }
 
         } catch (e: Exception) {
             false

@@ -11,7 +11,6 @@ import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.databinding.ActivityLoginBinding
 import com.ddn.peedo.project.sapa.model.AuthRequest
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
-import com.ddn.peedo.project.sapa.store.TokenManager
 import com.ddn.peedo.project.sapa.ui.dashboard.MainDashboard
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import kotlinx.coroutines.launch
@@ -22,8 +21,12 @@ import android.widget.Toast
 import com.ddn.peedo.project.sapa.databinding.DialogAboutAppBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
 import com.ddn.peedo.project.sapa.databinding.DialogStudentsBinding
+import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.utils.JwtUtils
 import com.google.android.material.button.MaterialButton
+import com.google.gson.Gson
+import org.json.JSONArray
+import org.json.JSONObject
 
 class LoginActivity : AppCompatActivity() {
 
@@ -93,7 +96,7 @@ class LoginActivity : AppCompatActivity() {
             "Authenticating",
             "Please wait..."
         )
-        val tokenManager = TokenManager(this)
+        val session = SessionManager(this)
 
         lifecycleScope.launch {
             try {
@@ -110,7 +113,7 @@ class LoginActivity : AppCompatActivity() {
                     val token = auth.token
 
                     // 1️⃣ Save token
-                    tokenManager.saveToken(token)
+                    session.saveToken(token)
 
                     // 2️⃣ Decode token
                     val payload = JwtUtils.decode(token)
@@ -123,10 +126,34 @@ class LoginActivity : AppCompatActivity() {
                         "LoginActivity_INFO",
                         "Login username=$username userId=$userId role=$roleId"
                     )
+                    // ✅ Fetch USER
+//                    val userResponse = RetrofitClient.api(this@LoginActivity)
+//                        .getUserByUsername(username)
 
-                    // 3️⃣ Expiration check
+//                    if (userResponse.isSuccessful) {
+
+//                        val user = userResponse.body()
+
+                        // Convert to JSON
+//                        val userJson = JSONObject(Gson().toJson(user))
+//                        session.saveUser(userJson)
+
+
+                        // ✅ Fetch PRIVILEGES
+//                        val privResponse = RetrofitClient.api(this@LoginActivity)
+//                            .getPrivilegeByRole(user!!.roleID)
+//
+//                        if (privResponse.isSuccessful) {
+//
+//                            val privs = privResponse.body()
+//
+//                            val privJson = JSONArray(Gson().toJson(privs))
+//                            session.savePrivileges(privJson)
+//                        }
+//                    }
+
                     if (JwtUtils.isTokenExpired(token)) {
-                        tokenManager.clearToken()
+                        session.clearSession()
                         SweetAlertUtil.showError(
                             this@LoginActivity,
                             "Session Error",
