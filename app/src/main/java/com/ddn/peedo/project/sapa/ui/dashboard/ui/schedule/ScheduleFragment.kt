@@ -40,8 +40,11 @@ class ScheduleFragment : Fragment() {
     private val status = arrayOf(
         "ALL", "PENDING", "CONFIRM", "DECLINE", "CANCEL REQUEST", "CANCELED"
     )
-    private lateinit var session: SessionManager;
 
+    //    private lateinit var session: SessionManager;
+    private val session by lazy {
+        SessionManager(requireContext())
+    }
     private var selectedItem = "ALL"
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -119,8 +122,10 @@ class ScheduleFragment : Fragment() {
     }
 
     private fun initRecycler() {
-        adapter = ScheduleAdapter(  emptyList(), requireContext(),
-            lifecycleOwner = viewLifecycleOwner) { slot ->
+        adapter = ScheduleAdapter(
+            emptyList(), requireContext(),
+            lifecycleOwner = viewLifecycleOwner
+        ) { slot ->
             // TODO: handle shift click
             // slot.slotID
             // slot.shiftName
@@ -399,7 +404,10 @@ class ScheduleFragment : Fragment() {
 
         Log.d("ScheduleFragment_INFO", "Hospitals: ${grouped.size}")
         grouped.forEach {
-            Log.d("ScheduleFragment_INFO", "Hospital slots: ${it.slots.first().hospitalName} → ${it.slots.size}")
+            Log.d(
+                "ScheduleFragment_INFO",
+                "Hospital slots: ${it.slots.first().hospitalName} → ${it.slots.size}"
+            )
         }
         adapter.updateData(grouped)
         updateLegend(filtered)
@@ -412,12 +420,13 @@ class ScheduleFragment : Fragment() {
 
         lifecycleScope.launch {
 
-//            session = SessionManager(requireContext());
-//            val user = session.getUser()
-//            val pri = session.getPrivileges()
-//
-//            Log.d("ScheduleFragment_INFO", "Session User: $user")
-//            Log.d("ScheduleFragment_INFO", "Session Privileges: $pri")
+
+            val user = session.getUser()
+            val pri = session.getPrivileges()
+
+            Log.d("ScheduleFragment_INFO", "Session User: $user")
+            Log.d("ScheduleFragment_INFO", "Session Privileges: $pri")
+
 
             try {
                 val response = RetrofitClient.create(requireContext()).getSchedule()

@@ -7,6 +7,7 @@ import com.ddn.peedo.project.sapa.model.AuthRequest
 import com.ddn.peedo.project.sapa.model.AuthResponse
 import com.ddn.peedo.project.sapa.model.Information
 import com.ddn.peedo.project.sapa.model.School
+import com.ddn.peedo.project.sapa.model.User
 import com.ddn.peedo.project.sapa.model.VwAppointedStudent
 import com.ddn.peedo.project.sapa.model.VwPrivilege
 import com.ddn.peedo.project.sapa.model.VwSlot
@@ -37,10 +38,15 @@ interface ApiService {
     ): Response<AuthResponse>
 
     //-----------------Users-----------------//
-    @GET("Users/GetUserbyUsername")
+//    @GET("Users/GetUserbyUsername")
+//    suspend fun getUserByUsername(
+//        @Query("username") username: String
+//    ): Response<User>
+    @GET("Users/GetUserbyUsername/{username}")
     suspend fun getUserByUsername(
-        @Query("id") username: String
-    ): Response<VwUser>
+        @Path("username") username: String
+    ): Response<User>
+
 
 
     //-----------------Privileges-----------------//

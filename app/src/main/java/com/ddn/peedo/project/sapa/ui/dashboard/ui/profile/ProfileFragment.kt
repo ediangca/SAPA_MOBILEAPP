@@ -16,10 +16,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.LoginActivity
 import com.ddn.peedo.project.sapa.databinding.FragmentProfileBinding
+import com.ddn.peedo.project.sapa.model.User
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.ui.dashboard.MainDashboard
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class ProfileFragment : Fragment() {
 
@@ -28,6 +33,9 @@ class ProfileFragment : Fragment() {
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
+    private val session by lazy {
+        SessionManager(requireContext())
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -54,10 +62,49 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val session = SessionManager(requireContext())
+        initComponent()
+    }
 
-        binding.btnLogout.setOnClickListener {
-            showLogoutConfirmation(session)
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun initComponent() {
+        lifecycleScope.launch {
+
+            val userJson = session.getUser()
+            val privs = session.getPrivileges()
+
+            val today = LocalDate.now()
+            val formatter = DateTimeFormatter.ofPattern(
+                "EEEE, MMM dd, yyyy",
+                Locale.ENGLISH
+            )
+
+            if (userJson == null) {
+                Log.e("SESSION", "User not found → redirect to login")
+                return@launch
+            }
+
+            val userId = userJson.getString("userID")
+            val roleId = userJson.getString("roleID")
+
+            Log.d("USER_DATA", "ID: $userId")
+            Log.d("USER_DATA", "Role: $roleId")
+
+            val user = Gson().fromJson(userJson.toString(), User::class.java)
+
+            with(binding) {
+
+                userDisplayName.text = user.username
+                userRole.text = user.rolename
+                userID.text = user.userID
+                fullname.text = user.fullname
+
+
+                btnLogout.setOnClickListener {
+                    showLogoutConfirmation(session)
+                }
+            }
+
+            Log.d("SESSION", "User: $user")
         }
     }
 

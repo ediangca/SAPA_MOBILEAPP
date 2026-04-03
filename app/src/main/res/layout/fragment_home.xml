@@ -6,7 +6,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_light"
-    android:paddingTop="16dp"
     android:paddingBottom="110dp"
     tools:context=".ui.dashboard.MainDashboard">
 
@@ -17,6 +16,18 @@
         android:layout_height="wrap_content"
         android:background="@color/background_light"
         app:elevation="4dp">
+
+
+        <TextView
+            android:id="@+id/userDisplayName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="4dp"
+            android:fontFamily="@font/poppins_bold"
+            android:text="Hi User, Good day!"
+            android:textColor="@color/primary"
+            android:textSize="24sp" />
 
         <!-- Date and Title Section -->
         <TextView
@@ -34,11 +45,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
-            android:layout_marginTop="4dp"
             android:fontFamily="@font/poppins_bold"
             android:text="Dashboard Overview"
             android:textColor="@color/primary"
             android:textSize="24sp" />
+
 
     </com.google.android.material.appbar.AppBarLayout>
 

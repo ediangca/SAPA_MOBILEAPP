@@ -104,14 +104,18 @@ class LoginActivity : AppCompatActivity() {
                     AuthRequest(username, password)
                 )
 
-                loading.dismissWithAnimation()
+                Log.d("LoginActivity_INFO", "Attempting Login...")
 
                 if (response.isSuccessful && response.body() != null) {
 
 
+                    Log.d("LoginActivity_INFO", "Login Success...")
+
                     val auth = response.body()!!
                     val token = auth.token
 
+
+                    Log.d("LoginActivity_INFO", "Saving token...")
                     // 1️⃣ Save token
                     session.saveToken(token)
 
@@ -126,50 +130,68 @@ class LoginActivity : AppCompatActivity() {
                         "LoginActivity_INFO",
                         "Login username=$username userId=$userId role=$roleId"
                     )
-                    // ✅ Fetch USER
-//                    val userResponse = RetrofitClient.api(this@LoginActivity)
-//                        .getUserByUsername(username)
-
-//                    if (userResponse.isSuccessful) {
-
-//                        val user = userResponse.body()
-
-                        // Convert to JSON
-//                        val userJson = JSONObject(Gson().toJson(user))
-//                        session.saveUser(userJson)
 
 
-                        // ✅ Fetch PRIVILEGES
-//                        val privResponse = RetrofitClient.api(this@LoginActivity)
-//                            .getPrivilegeByRole(user!!.roleID)
+                    Log.d(
+                        "LoginActivity_INFO",
+                        "Fetching User details"
+                    )
+
+                    val userResponse = RetrofitClient.api(this@LoginActivity)
+                        .getUserByUsername(username)
+
+                    if (userResponse.isSuccessful) {
+
+                        val user = userResponse.body()
+
+                        if (user != null) {
+
+                            Log.d("LoginActivity_INFO", "User found: ${user.username}")
+
+                            val userJson = JSONObject(Gson().toJson(user))
+                            session.saveUser(userJson)
+
+                            // ✅ privileges
+                            val privResponse = RetrofitClient.api(this@LoginActivity)
+                                .getPrivilegeByRole(user.roleID)
+
+                            if (privResponse.isSuccessful && privResponse.body() != null) {
+
+                                val privJson = JSONArray(Gson().toJson(privResponse.body()))
+                                session.savePrivileges(privJson)
+
+                                loading.dismissWithAnimation()
+
+                                // 4️⃣ Navigate
+                                SweetAlertUtil.showSuccess(
+                                    this@LoginActivity,
+                                    "Welcome",
+                                    auth.message
+                                ) {
+                                    goToDashboard()
+                                }
+                            }
+
+                        } else {
+                            SweetAlertUtil.showError(this@LoginActivity, "Error", "User not found")
+                            Log.e("LoginActivity_INFO", "User is NULL (possible API mismatch)")
+                        }
+
+                    } else {
+                        SweetAlertUtil.showError(this@LoginActivity, "Error", "API failed")
+                        Log.e("LoginActivity_INFO", "API failed: ${userResponse.code()}")
+                    }
 //
-//                        if (privResponse.isSuccessful) {
-//
-//                            val privs = privResponse.body()
-//
-//                            val privJson = JSONArray(Gson().toJson(privs))
-//                            session.savePrivileges(privJson)
-//                        }
+//                    if (JwtUtils.isTokenExpired(token)) {
+//                        session.clearSession()
+//                        SweetAlertUtil.showError(
+//                            this@LoginActivity,
+//                            "Session Error",
+//                            "Token expired. Please login again."
+//                        )
+//                        return@launch
 //                    }
 
-                    if (JwtUtils.isTokenExpired(token)) {
-                        session.clearSession()
-                        SweetAlertUtil.showError(
-                            this@LoginActivity,
-                            "Session Error",
-                            "Token expired. Please login again."
-                        )
-                        return@launch
-                    }
-
-                    // 4️⃣ Navigate
-                    SweetAlertUtil.showSuccess(
-                        this@LoginActivity,
-                        "Welcome",
-                        auth.message
-                    ) {
-                        goToDashboard()
-                    }
 
                 } else {
                     val errorMsg = response.errorBody()?.string()
