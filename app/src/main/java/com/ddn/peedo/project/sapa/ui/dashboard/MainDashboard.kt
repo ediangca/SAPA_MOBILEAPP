@@ -20,10 +20,14 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentTransaction
+import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.R
+import com.ddn.peedo.project.sapa.adapter.RecentScheduleAdapter
 import com.ddn.peedo.project.sapa.databinding.ActivityMainDashboardBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
+import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.services.QRCodeAnalyzer
+import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.home.HomeFragment
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.profile.ProfileFragment
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.reports.ReportsFragment
@@ -31,6 +35,8 @@ import com.ddn.peedo.project.sapa.ui.dashboard.ui.schedule.ScheduleFragment
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.school.SchoolFragment
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.gson.Gson
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 
@@ -51,7 +57,6 @@ class MainDashboard : AppCompatActivity() {
     private lateinit var soundPool: SoundPool
     private var soundId: Int = 0
 
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -59,6 +64,19 @@ class MainDashboard : AppCompatActivity() {
         setContentView(binding.root)
 
         onInit()
+
+
+        val session = SessionManager(this)
+
+        lifecycleScope.launch {
+            val userJson = session.getUser()
+
+            if (userJson != null) {
+                val user = Gson().fromJson(userJson.toString(), VwUser::class.java)
+
+                navAccess(user)
+            }
+        }
 
 
     }
@@ -76,7 +94,6 @@ class MainDashboard : AppCompatActivity() {
         soundId = soundPool.load(this, R.raw.beep, 1)
 
         qrBinding = DialogScanQrBinding.inflate(this.layoutInflater)
-
 
         with(binding) {
 
@@ -98,12 +115,43 @@ class MainDashboard : AppCompatActivity() {
                 navMenuOnItemSelectedListener(item)
             }
 
-//            binding.scanQR.setOnClickListener {
-//                onQrScanClicked()
-//            }
 
         }
     }
+
+
+    fun navAccess(user: VwUser) {
+        val menu = binding.mainNav.menu
+
+        // Reset all (important if reused)
+        menu.findItem(R.id.navigation_home)?.isVisible = true
+        menu.findItem(R.id.navigation_schedule)?.isVisible = true
+        menu.findItem(R.id.navigation_profile)?.isVisible = true
+        menu.findItem(R.id.navigation_school)?.isVisible = true
+        menu.findItem(R.id.navigation_report)?.isVisible = true
+
+        when (user.roleID) {
+            "UGR0001", "UGR0002" -> {
+                binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+            }
+
+            "UGR0003" -> {
+                binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+            }
+
+            "UGR0004" -> {
+                binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+            }
+
+            "UGR0005" -> {
+                binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+            }
+        }
+    }
+
 
     private fun onQrScanClicked() {
 

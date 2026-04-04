@@ -3,6 +3,7 @@ package com.ddn.peedo.project.sapa.model
 import android.annotation.SuppressLint
 import android.os.Parcel
 import android.os.Parcelable
+import com.google.gson.annotations.SerializedName
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -26,7 +27,9 @@ data class VwSlot(
     val userID: String,
     val fullname: String,
     val schoolID: String?,
-    val schoolName: String?
+    val schoolName: String?,
+    val date_Created: String, // DateTime -> String
+    val date_Updated: String
 ) : Parcelable {
 
     constructor(parcel: Parcel) : this(
@@ -48,7 +51,9 @@ data class VwSlot(
         userID = parcel.readString() ?: "",
         fullname = parcel.readString() ?: "",
         schoolID = parcel.readString(),
-        schoolName = parcel.readString()
+        schoolName = parcel.readString(),
+        date_Created = parcel.readString() ?: "",
+        date_Updated = parcel.readString() ?: ""
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
@@ -71,6 +76,8 @@ data class VwSlot(
         parcel.writeString(fullname)
         parcel.writeString(schoolID)
         parcel.writeString(schoolName)
+        parcel.writeString(date_Created)
+        parcel.writeString(date_Updated)
     }
 
     override fun describeContents(): Int = 0

@@ -29,7 +29,11 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
+import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.store.SessionManager
+import com.google.gson.Gson
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 
 class ScheduleFragment : Fragment() {
@@ -55,6 +59,7 @@ class ScheduleFragment : Fragment() {
 
     private val list = ArrayList<VwSlot>()
 
+    private  lateinit var user: VwUser
     private lateinit var adapter: ScheduleAdapter
     private lateinit var calendarAdapter: CalendarAdapter
     private lateinit var gestureDetector: GestureDetector
@@ -81,16 +86,57 @@ class ScheduleFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+
+
         initRecycler()
         initSpinner()
         initCalendar()
 
-        binding.swipeRefresh.setOnRefreshListener {
-            resetFilters()
-            loadSchedule()
+        lifecycleScope.launch {
+
+            val userJson = session.getUser()
+            val privs = session.getPrivileges()
+
+            val today = LocalDate.now()
+            val formatter = DateTimeFormatter.ofPattern(
+                "EEEE, MMM dd, yyyy",
+                Locale.ENGLISH
+            )
+
+            if (userJson == null) {
+                Log.e("SESSION", "User not found → redirect to login")
+                return@launch
+            }
+
+            val userId = userJson.getString("userID")
+            val lastname = userJson.getString("lastname")
+            val fullname = userJson.getString("fullname")
+            val roleId = userJson.getString("roleID")
+
+            Log.d("HomeFragment_INFO", "USER DATA ID: $userId")
+            Log.d("HomeFragment_INFO", "USER DATA Name: $fullname")
+            Log.d("HomeFragment_INFO", "USER DATA Role: $roleId")
+
+            user = Gson().fromJson(userJson.toString(), VwUser::class.java)
+
+            loadSchedule(user)
+
+            with(binding) {
+
+                binding.swipeRefresh.setOnRefreshListener {
+                    resetFilters()
+                    loadSchedule(user)
+                }
+
+            }
+
+
+
+
         }
 
-        loadSchedule()
+
+
     }
 
 
@@ -415,21 +461,47 @@ class ScheduleFragment : Fragment() {
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun loadSchedule() {
+    private fun loadSchedule(user: VwUser) {
         showLoading()
-
         lifecycleScope.launch {
 
-
-            val user = session.getUser()
-            val pri = session.getPrivileges()
-
-            Log.d("ScheduleFragment_INFO", "Session User: $user")
-            Log.d("ScheduleFragment_INFO", "Session Privileges: $pri")
-
-
             try {
-                val response = RetrofitClient.create(requireContext()).getSchedule()
+
+                val api = RetrofitClient.api(requireContext())
+                val year = LocalDate.now().year
+
+                Log.d("HomeFragment_INFO", "Fetching slots for role: ${user.roleID}")
+
+                val response = when (user.roleID) {
+
+                    "UGR0001", "UGR0002" -> {
+                        Log.d("HomeFragment_INFO", "Admin / Supervisor")
+                        api.getSlots(year)
+                    }
+
+                    "UGR0003" -> {
+                        Log.d("HomeFragment_INFO", "Student")
+                        api.getSlotsByUserID(user.userID, year)
+                    }
+
+                    "UGR0004" -> {
+                        Log.d("HomeFragment_INFO", "Appointed User")
+                        api.getSlotsByAppointUserID(user.userID, year)
+                    }
+
+                    "UGR0005" -> {
+                        Log.d("HomeFragment_INFO", "Hospital")
+                        api.getSlotsByHospitalID(user.hospitalID ?: "", year)
+                    }
+
+                    else -> {
+                        Log.e("HomeFragment_INFO", "Unknown role")
+                        return@launch
+                    }
+                }
+
+
+//                val response = RetrofitClient.create(requireContext()).getSchedule()
 
                 hideLoading()
                 binding.swipeRefresh.isRefreshing = false
@@ -525,7 +597,7 @@ class ScheduleFragment : Fragment() {
         }
 
         binding.btnRetry.setOnClickListener {
-            loadSchedule()
+            loadSchedule(user)
         }
     }
 

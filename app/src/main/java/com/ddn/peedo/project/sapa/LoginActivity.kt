@@ -59,8 +59,8 @@ class LoginActivity : AppCompatActivity() {
 
             btnInfo.setOnClickListener {
 
-//                val binding = DialogAboutAppBinding.inflate(LayoutInflater.from(this@LoginActivity))
-                val binding = DialogScanQrBinding.inflate(layoutInflater)
+                val binding = DialogAboutAppBinding.inflate(LayoutInflater.from(this@LoginActivity))
+//                val binding = DialogScanQrBinding.inflate(layoutInflater)
 
                 val dialog = Dialog(this@LoginActivity).apply {
                     setContentView(binding.root)

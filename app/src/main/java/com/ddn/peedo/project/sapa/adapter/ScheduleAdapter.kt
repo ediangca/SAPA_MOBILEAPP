@@ -38,13 +38,16 @@ import com.ddn.peedo.project.sapa.R
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.transition.Visibility
 import com.ddn.peedo.project.sapa.databinding.DialogDepartmentShiftsBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
 import com.ddn.peedo.project.sapa.databinding.DialogStudentsBinding
 import com.ddn.peedo.project.sapa.dataclass.ApiErrorResponse
 import com.ddn.peedo.project.sapa.dataclass.AttendanceRequest
+import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.services.QRCodeAnalyzer
+import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +73,11 @@ class ScheduleAdapter(
     val dateFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
     val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a") // 👈 12-hour format
 
+    private val session by lazy {
+        SessionManager(context)
+    }
+    private  lateinit var user: VwUser
+
     inner class ScheduleViewHolder(
         val binding: ItemScheduleBinding
     ) : RecyclerView.ViewHolder(binding.root)
@@ -89,6 +97,7 @@ class ScheduleAdapter(
         // =========================
         // HEADER
         // =========================
+        holder.binding.dateSlot.text = item.date
         holder.binding.tvSchoolName.text = item.schoolName
 
         holder.binding.tvHospitalName.text = item.hospitalName ?: ""
@@ -188,6 +197,19 @@ class ScheduleAdapter(
 //                    row.alpha = if (isFull) 0.4f else 1f
 //                    row.isEnabled = !isFull
 
+                    val userJson = session.getUser()
+
+                    user = Gson().fromJson(userJson.toString(), VwUser::class.java)
+
+                    qrScan.visibility = when (user.roleID) {
+                        "UGR0001", "UGR0002" -> {
+                            View.VISIBLE
+                        }
+                        else -> {
+                            View.GONE
+                        }
+                    }
+
                     qrScan.setOnClickListener {
                         if (!isWithinSlotTime(slot.startTime, slot.endTime)) {
 
@@ -197,6 +219,7 @@ class ScheduleAdapter(
 
                             val adjustedStart = startTime.minusHours(1)   // 1 hour before
                             val adjustedEnd = startTime.plusHours(1)      // 1 hour after
+
 
                             SweetAlertUtil.showWarning(
                                 context,
@@ -264,6 +287,45 @@ class ScheduleAdapter(
 
 
         dialog.show()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun isWithinSlotTime(start: String?, end: String?): Boolean {
+        if (start.isNullOrBlank() || end.isNullOrBlank()) return false
+
+        return try {
+
+            val startTime = LocalTime.parse(start, dateFormatter)
+            val endTime = LocalTime.parse(end, dateFormatter)
+
+            // ✅ Adjusted window
+            val adjustedStart = startTime.minusHours(1)   // 1 hour before
+            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
+
+
+            val now = LocalTime.now()
+
+            Log.d("ScheduleFragment_INFO", "TIME_CHECK Now: $now | Start: $startTime | End: $endTime")
+
+            Log.d("ScheduleFragment_INFO", "TIME_CHECK 1hr allowance Now: $now | Start: $adjustedStart | End: $adjustedEnd")
+//            now.isAfter(startTime) && now.isBefore(endTime)
+//            if (startTime <= endTime) {
+            // ✅ NORMAL CASE (same day)
+//            now >= adjustedStart && now <= adjustedEnd
+
+            if (adjustedStart <= adjustedEnd) {
+                now >= startTime && now <= endTime
+//                now.isAfter(adjustedStart) && now.isBefore(adjustedEnd)
+            } else {
+                // 🌙 OVERNIGHT CASE (crosses midnight)
+//                now >= startTime || now <= endTime
+                now >= adjustedStart || now <= adjustedEnd
+//                now.isAfter(adjustedStart) && now.isBefore(adjustedEnd)
+            }
+
+        } catch (e: Exception) {
+            false
+        }
     }
 
 
@@ -335,46 +397,6 @@ class ScheduleAdapter(
             time // fallback (won’t crash)
         }
     }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun isWithinSlotTime(start: String?, end: String?): Boolean {
-        if (start.isNullOrBlank() || end.isNullOrBlank()) return false
-
-        return try {
-
-            val startTime = LocalTime.parse(start, dateFormatter)
-            val endTime = LocalTime.parse(end, dateFormatter)
-
-            // ✅ Adjusted window
-            val adjustedStart = startTime.minusHours(1)   // 1 hour before
-            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
-
-
-            val now = LocalTime.now()
-
-            Log.d("TIME_CHECK", "Now: $now | Start: $startTime | End: $endTime")
-
-            Log.d("TIME_CHECK", " 1hr allowance Now: $now | Start: $adjustedStart | End: $adjustedEnd")
-//            now.isAfter(startTime) && now.isBefore(endTime)
-//            if (startTime <= endTime) {
-            // ✅ NORMAL CASE (same day)
-//            now >= adjustedStart && now <= adjustedEnd
-
-            if (adjustedStart <= adjustedEnd) {
-//                now >= startTime && now <= endTime
-                now.isAfter(adjustedStart) && now.isBefore(adjustedEnd)
-            } else {
-                // 🌙 OVERNIGHT CASE (crosses midnight)
-//                now >= startTime || now <= endTime
-//                now >= adjustedStart || now <= adjustedEnd
-                now.isAfter(adjustedStart) && now.isBefore(adjustedEnd)
-            }
-
-        } catch (e: Exception) {
-            false
-        }
-    }
-
 
     private fun showLoading(binding: DialogStudentsBinding) {
         binding.loadingState.visibility = View.VISIBLE

@@ -9,8 +9,6 @@
     app:cardElevation="4dp"
     app:strokeWidth="1dp">
 
-
-
     <!-- Affiliation Item 1 -->
     <androidx.cardview.widget.CardView
         android:id="@+id/affiliation_card_1"
@@ -26,10 +24,9 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="16dp"
             android:background="@drawable/bg_linear_gradient_50"
-            android:orientation="vertical">
-
+            android:orientation="vertical"
+            android:padding="16dp">
 
 
             <ImageView
@@ -85,14 +82,6 @@
                 app:layout_constraintStart_toEndOf="@+id/cardLogo"
                 app:layout_constraintTop_toBottomOf="@id/tvSchoolName"
                 tools:layout_editor_absoluteY="16dp" />
-
-            <!-- 🔥 PREVIEW CHIPS -->
-            <com.google.android.flexbox.FlexboxLayout
-                android:id="@+id/shiftChipContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:layout_constraintTop_toBottomOf="@id/tvHospitalName"
-                app:flexWrap="wrap" />
 
 
         </androidx.constraintlayout.widget.ConstraintLayout>

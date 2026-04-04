@@ -14,7 +14,7 @@ data class VwUser(
     val email: String,
     val emailVerifiedAt: String?, // DateTime -> String (ISO format)
     val roleID: String,
-    val roleName: String,
+    val rolename: String,
     val schoolID: String?,
     val schoolName: String?,
     val status: Char?,
@@ -38,7 +38,7 @@ data class VwUser(
         email = parcel.readString() ?: "",
         emailVerifiedAt = parcel.readString(),
         roleID = parcel.readString() ?: "",
-        roleName = parcel.readString() ?: "",
+        rolename = parcel.readString() ?: "",
         schoolID = parcel.readString(),
         schoolName = parcel.readString(),
         status = parcel.readValue(Char::class.java.classLoader) as? Char,
@@ -62,7 +62,7 @@ data class VwUser(
         parcel.writeString(email)
         parcel.writeString(emailVerifiedAt)
         parcel.writeString(roleID)
-        parcel.writeString(roleName)
+        parcel.writeString(rolename)
         parcel.writeString(schoolID)
         parcel.writeString(schoolName)
         parcel.writeValue(status)

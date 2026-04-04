@@ -1,30 +1,35 @@
 package com.ddn.peedo.project.sapa.ui.dashboard.ui.profile
 
+import android.app.Dialog
 import android.content.Intent
 import android.os.Build
-import androidx.fragment.app.viewModels
 import android.os.Bundle
 import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
-import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.LoginActivity
 import com.ddn.peedo.project.sapa.databinding.FragmentProfileBinding
-import com.ddn.peedo.project.sapa.model.User
+import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.store.SessionManager
-import com.ddn.peedo.project.sapa.ui.dashboard.MainDashboard
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.widget.ImageView
+
+import com.ddn.peedo.project.sapa.R
 
 class ProfileFragment : Fragment() {
 
@@ -89,7 +94,10 @@ class ProfileFragment : Fragment() {
             Log.d("USER_DATA", "ID: $userId")
             Log.d("USER_DATA", "Role: $roleId")
 
-            val user = Gson().fromJson(userJson.toString(), User::class.java)
+            val user = Gson().fromJson(userJson.toString(), VwUser::class.java)
+
+
+            Log.d("USER_DATA", "User: $user")
 
             with(binding) {
 
@@ -98,14 +106,72 @@ class ProfileFragment : Fragment() {
                 userID.text = user.userID
                 fullname.text = user.fullname
 
+                if (user.schoolID != null) {
+                    schoolName.text = user.schoolName
+                }else{
+                    schoolLabel.visibility = View.GONE
+                    schoolName.visibility = View.GONE
+                }
+
+                if (user.hospitalID != null){
+                    hospitalName.text = user.hospitalID
+                }else{
+                    hospitalLabel.visibility = View.GONE
+                    hospitalName.visibility = View.GONE
+                }
+
 
                 btnLogout.setOnClickListener {
                     showLogoutConfirmation(session)
+                }
+
+                if (user.roleID == "UGR0004") {
+
+                    val qrBitmap = generateQr(user.userID, 300)
+                    profilePicture.setImageBitmap(qrBitmap)
+
+                    profilePicture.setOnClickListener {
+                        showQrDialog(user.userID)
+                    }
                 }
             }
 
             Log.d("SESSION", "User: $user")
         }
+    }
+
+    fun generateQr(content: String, size: Int = 300): Bitmap {
+        val writer = QRCodeWriter()
+        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size)
+
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bmp.setPixel(
+                    x,
+                    y,
+                    if (bitMatrix[x, y]) Color.BLACK else Color.WHITE
+                )
+            }
+        }
+        return bmp
+    }
+
+    fun showQrDialog(userId: String) {
+
+        val dialog = Dialog(requireContext())
+        val view = layoutInflater.inflate(R.layout.dialog_qr, null)
+
+        val img = view.findViewById<ImageView>(R.id.imgQrLarge)
+
+        img.setImageBitmap(generateQr(userId, 600))
+
+        dialog.setContentView(view)
+        dialog.setCancelable(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialog.show()
     }
 
     private fun showLogoutConfirmation(session: SessionManager) {

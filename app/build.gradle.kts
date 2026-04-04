@@ -87,4 +87,7 @@ dependencies {
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
+
 }
