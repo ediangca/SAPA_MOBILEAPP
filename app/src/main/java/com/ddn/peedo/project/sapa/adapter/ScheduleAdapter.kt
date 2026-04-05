@@ -202,12 +202,16 @@ class ScheduleAdapter(
                     user = Gson().fromJson(userJson.toString(), VwUser::class.java)
 
                     qrScan.visibility = when (user.roleID) {
-                        "UGR0001", "UGR0002" -> {
+                        "UGR0001", "UGR0002", "UGR0005" -> {
                             View.VISIBLE
                         }
                         else -> {
                             View.GONE
                         }
+                    }
+
+                    if(allocated <= 0){
+                        qrScan.visibility = View.GONE
                     }
 
                     qrScan.setOnClickListener {

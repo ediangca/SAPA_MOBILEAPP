@@ -114,7 +114,7 @@ class ProfileFragment : Fragment() {
                 }
 
                 if (user.hospitalID != null){
-                    hospitalName.text = user.hospitalID
+                    hospitalName.text = user.hospitalName
                 }else{
                     hospitalLabel.visibility = View.GONE
                     hospitalName.visibility = View.GONE
