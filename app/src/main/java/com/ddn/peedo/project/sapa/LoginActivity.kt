@@ -17,14 +17,20 @@ import kotlinx.coroutines.launch
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import cn.pedant.SweetAlert.SweetAlertDialog
 import com.ddn.peedo.project.sapa.databinding.DialogAboutAppBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
 import com.ddn.peedo.project.sapa.databinding.DialogStudentsBinding
+import com.ddn.peedo.project.sapa.model.Settings
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.utils.JwtUtils
 import com.google.android.material.button.MaterialButton
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -34,7 +40,7 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+//        enableEdgeToEdge()
         binding = ActivityLoginBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -79,6 +85,9 @@ class LoginActivity : AppCompatActivity() {
 
     private fun attemptLogin() {
 
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
+
         val username = binding.username.text.toString().trim()
         val password = binding.password.text.toString().trim()
 
@@ -98,6 +107,7 @@ class LoginActivity : AppCompatActivity() {
         )
         val session = SessionManager(this)
 
+        /*
         lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api(this@LoginActivity).authenticate(
@@ -140,7 +150,8 @@ class LoginActivity : AppCompatActivity() {
                     val userResponse = RetrofitClient.api(this@LoginActivity)
                         .getUserByUsername(username)
 
-                    if (userResponse.isSuccessful) {
+
+                    if (userResponse.isSuccessful && response.body() != null) {
 
                         val user = userResponse.body()
 
@@ -160,7 +171,7 @@ class LoginActivity : AppCompatActivity() {
                                 val privJson = JSONArray(Gson().toJson(privResponse.body()))
                                 session.savePrivileges(privJson)
 
-                                loading.dismissWithAnimation()
+//                                loading.dismissWithAnimation()
 
                                 // 4️⃣ Navigate
                                 SweetAlertUtil.showSuccess(
@@ -173,13 +184,32 @@ class LoginActivity : AppCompatActivity() {
                             }
 
                         } else {
-                            SweetAlertUtil.showError(this@LoginActivity, "Error", "User not found")
+//                            loading.dismissWithAnimation()
+//                            delay(300)
                             Log.e("LoginActivity_INFO", "User is NULL (possible API mismatch)")
+                            SweetAlertUtil.showError(this@LoginActivity, "Error", "User not found")
                         }
 
                     } else {
-                        SweetAlertUtil.showError(this@LoginActivity, "Error", "API failed")
-                        Log.e("LoginActivity_INFO", "API failed: ${userResponse.code()}")
+//                        loading.dismissWithAnimation()
+//                        delay(300)
+
+                        val errorMsg = response.errorBody()?.string()
+                            ?: "Invalid credentials"
+
+                        Toast.makeText(
+                            this@LoginActivity,
+                            extractMessage(errorMsg),
+                            Toast.LENGTH_LONG
+                        ).show()
+
+                        Log.d("LoginActivity_INFO", "User no Successful : $errorMsg")
+                        SweetAlertUtil.showError(
+                            this@LoginActivity,
+                            "User not found!",
+                            extractMessage(errorMsg),
+                            loading,
+                        )
                     }
 //
 //                    if (JwtUtils.isTokenExpired(token)) {
@@ -194,19 +224,31 @@ class LoginActivity : AppCompatActivity() {
 
 
                 } else {
+//                    loading.dismissWithAnimation()
+//                    delay(300)
+
                     val errorMsg = response.errorBody()?.string()
                         ?: "Invalid credentials"
 
+                    Toast.makeText(
+                        this@LoginActivity,
+                        extractMessage(errorMsg),
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    Log.d("LoginActivity_INFO", "Login no Successful : $errorMsg")
                     SweetAlertUtil.showError(
                         this@LoginActivity,
-                        "Login Failed",
-                        extractMessage(errorMsg)
+                        "UnAuthenticated User!",
+                        extractMessage(errorMsg),
+                        loading,
                     )
                 }
 
             } catch (e: Exception) {
-                loading.dismissWithAnimation()
-                Log.d("LoginActivity_INFO", "checkApiAndProceed: ${e.message}")
+//                loading.dismissWithAnimation()
+//                delay(300)
+                Log.d("LoginActivity_INFO", "Exception: ${e.message}")
 
                 Toast.makeText(
                     this@LoginActivity,
@@ -216,9 +258,118 @@ class LoginActivity : AppCompatActivity() {
                 SweetAlertUtil.showError(
                     this@LoginActivity,
                     "Error",
-                    "Unable to connect to login."
+                    "Unable to connect to login.",
+                    loading,
                 )
             }
+        }
+        */
+
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api(this@LoginActivity).authenticate(
+                    AuthRequest(username, password)
+                )
+
+                if (response.isSuccessful && response.body() != null) {
+                    val auth = response.body()!!
+                    val token = auth.token
+                    session.saveToken(token)
+
+                    val payload = JwtUtils.decode(token)
+                    val username = payload.optString("unique_name", "")
+                    val userId = payload.optString("nameid", "")
+
+                    val userResponse =
+                        RetrofitClient.api(this@LoginActivity).getUserByUsername(username)
+
+                    if (userResponse.isSuccessful && userResponse.body() != null) {
+                        val user = userResponse.body()!!
+                        val userJson = JSONObject(Gson().toJson(user))
+                        session.saveUser(userJson)
+
+                        val privResponse =
+                            RetrofitClient.api(this@LoginActivity).getPrivilegeByRole(user.roleID)
+
+                        if (privResponse.isSuccessful && privResponse.body() != null) {
+                            val privJson = JSONArray(Gson().toJson(privResponse.body()))
+                            session.savePrivileges(privJson)
+
+                            // ✅ Fetch and cache Settings (non-fatal if it fails)
+                            fetchAndCacheSettings(this@LoginActivity)
+
+                            withContext(Dispatchers.Main) { // ✅ UI on main thread
+                                loading.changeAlertType(SweetAlertDialog.SUCCESS_TYPE)
+                                loading.titleText = "Welcome"
+                                loading.contentText = auth.message
+                                loading.setCancelable(true)
+                                loading.setConfirmClickListener {
+                                    it.dismissWithAnimation()
+                                    goToDashboard()
+                                }
+                            }
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) { // ✅ UI on main thread
+                            loading.changeAlertType(SweetAlertDialog.ERROR_TYPE)
+                            loading.titleText = "Error"
+                            loading.contentText = "User not found"
+                            loading.setCancelable(true)
+                            loading.setConfirmClickListener { it.dismissWithAnimation() }
+                        }
+                    }
+
+                } else {
+                    val errorMsg = withContext(Dispatchers.IO) {
+                        response.errorBody()?.string() ?: "Invalid credentials"
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        loading.dismiss()
+                    }
+
+                    delay(500)
+
+                    withContext(Dispatchers.Main) {
+                        SweetAlertUtil.showError(
+                            this@LoginActivity,
+                            "Login Failed",
+                            extractMessage(errorMsg)
+                        )
+                    }
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loading.dismiss()
+                }
+                delay(500)
+                withContext(Dispatchers.Main) {
+                    SweetAlertUtil.showError(
+                        this@LoginActivity,
+                        "Error",
+                        "Unable to connect."
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun fetchAndCacheSettings(context: Context) {
+        val sessionManager = SessionManager(context)
+        try {
+            val response = RetrofitClient.create(context).getSettings()
+            if (response.isSuccessful) {
+                Log.d("Settings_INFO", "Settings fetched and cached successfully ${response.body()}")
+                val settingsList = response.body() ?: emptyList<Settings>()
+                sessionManager.saveSettings(settingsList)
+
+                Log.d("Settings_INFO", "Settings fetched and cached successfully $settingsList")
+            } else {
+                Log.d("Settings_INFO", "Failed to fetch settings: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e("Settings_INFO", "Error fetching settings", e)
         }
     }
 

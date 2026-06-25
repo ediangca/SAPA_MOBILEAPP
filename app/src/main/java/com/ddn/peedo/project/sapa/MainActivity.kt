@@ -132,6 +132,8 @@ class MainActivity : AppCompatActivity() {
 //                        "Server Connected!"
 //                    ) {
 //                    }
+
+
                     checkAuthState()
                 } else {
                     SweetAlertUtil.showError(

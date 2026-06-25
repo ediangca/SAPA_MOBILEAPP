@@ -24,10 +24,14 @@ data class VwSlot(
     val allocationID: String,
     val allocation: Int?,
     val allocationStatus: Boolean?,
+    val isTimeRestricted: Boolean? = false,
     val userID: String,
     val fullname: String,
     val schoolID: String?,
     val schoolName: String?,
+    val CIID: String?,
+    val ci_fullname: String?,
+    val isCIPresent: Int?,
     val date_Created: String, // DateTime -> String
     val date_Updated: String
 ) : Parcelable {
@@ -48,10 +52,14 @@ data class VwSlot(
         allocationID = parcel.readString() ?: "",
         allocation = parcel.readValue(Int::class.java.classLoader) as? Int,
         allocationStatus = parcel.readValue(Boolean::class.java.classLoader) as? Boolean,
+        isTimeRestricted = parcel.readValue(Boolean::class.java.classLoader) as? Boolean,
         userID = parcel.readString() ?: "",
         fullname = parcel.readString() ?: "",
         schoolID = parcel.readString(),
         schoolName = parcel.readString(),
+        CIID = parcel.readString(),
+        ci_fullname = parcel.readString(),
+        isCIPresent = parcel.readValue(Int::class.java.classLoader) as? Int,
         date_Created = parcel.readString() ?: "",
         date_Updated = parcel.readString() ?: ""
     )
@@ -72,10 +80,14 @@ data class VwSlot(
         parcel.writeString(allocationID)
         parcel.writeValue(allocation)
         parcel.writeValue(allocationStatus)
+        parcel.writeValue(isTimeRestricted)
         parcel.writeString(userID)
         parcel.writeString(fullname)
         parcel.writeString(schoolID)
         parcel.writeString(schoolName)
+        parcel.writeString(CIID)
+        parcel.writeString(ci_fullname)
+        parcel.writeValue(isCIPresent)
         parcel.writeString(date_Created)
         parcel.writeString(date_Updated)
     }

@@ -174,8 +174,8 @@ class HomeFragment : Fragment() {
                     cardFuture.visibility = View.GONE
                 }
 
-                // STUDENT / SUPERVISOR
-                "UGR0003", "UGR0005" -> {
+                // SCHOOL COORDINATOR / SUPERVISOR / CI
+                "UGR0003", "UGR0005", "UGR0006"  -> {
                     cardPending.visibility = View.VISIBLE
                     cardConfirmed.visibility = View.VISIBLE
                     cardStudents.visibility = View.VISIBLE
@@ -183,7 +183,7 @@ class HomeFragment : Fragment() {
                     cardFuture.visibility = View.GONE
                 }
 
-                // APPOINTED
+                // STUDENT
                 "UGR0004" -> {
                     attendanceCount.text = data.totalAttendances.toString()
                     futureCount.text = data.futureSlots.toString()
@@ -230,6 +230,11 @@ class HomeFragment : Fragment() {
                     "UGR0005" -> {
                         Log.d("HomeFragment_INFO", "Hospital")
                         api.getSlotsByHospitalID(user.hospitalID ?: "", year)
+                    }
+
+                    "UGR0006" -> {
+                        Log.d("HomeFragment_INFO", "CI User")
+                        api.getSlotsByCI(user.userID ?: "", year)
                     }
 
                     else -> {

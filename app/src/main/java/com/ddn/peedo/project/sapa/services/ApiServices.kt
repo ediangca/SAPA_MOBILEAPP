@@ -8,6 +8,7 @@ import com.ddn.peedo.project.sapa.model.AuthResponse
 import com.ddn.peedo.project.sapa.model.DashboardSummary
 import com.ddn.peedo.project.sapa.model.Information
 import com.ddn.peedo.project.sapa.model.School
+import com.ddn.peedo.project.sapa.model.Settings
 import com.ddn.peedo.project.sapa.model.VwAppointedStudent
 import com.ddn.peedo.project.sapa.model.VwPrivilege
 import com.ddn.peedo.project.sapa.model.VwSlot
@@ -83,6 +84,13 @@ interface ApiService {
         @Query("year") year: Int?
     ): Response<List<VwSlot>>
 
+
+    @GET("Slots/ci/{userId}")
+    suspend fun getSlotsByCI(
+        @Path("userId") userId: String,
+        @Query("year") year: Int?
+    ): Response<List<VwSlot>>
+
     @GET("Slots/hospital/{hospitalId}")
     suspend fun getSlotsByHospitalID(
         @Path("hospitalId") hospitalId: String,
@@ -106,11 +114,6 @@ interface ApiService {
     //-----------------Attendance-----------------//
 
     @GET("Attendance/user/{userId}/slot/{slotId}")
-    suspend fun getAttendanceBySlotID(
-        @Path("slotId") slotId: String
-    ): Response<AttendanceResponse>
-
-    @GET("Attendance/user/{userId}/slot/{slotId}")
     suspend fun validateAttendance(
         @Path("userId") userId: String,
         @Path("slotId") slotId: String
@@ -120,5 +123,11 @@ interface ApiService {
     suspend fun postAttendance(
         @Body request: AttendanceRequest
     ): Response<AttendanceResponse>
+
+
+    //-----------------Settinggs-----------------//
+
+    @GET("Settings/")
+    suspend fun getSettings(): Response<List<Settings>>
 
 }

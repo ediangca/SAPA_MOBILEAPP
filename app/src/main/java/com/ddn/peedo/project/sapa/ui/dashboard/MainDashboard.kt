@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +25,7 @@ import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.adapter.RecentScheduleAdapter
 import com.ddn.peedo.project.sapa.databinding.ActivityMainDashboardBinding
+import com.ddn.peedo.project.sapa.databinding.DialogAboutAppBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.services.QRCodeAnalyzer
@@ -116,6 +118,25 @@ class MainDashboard : AppCompatActivity() {
             }
 
 
+            btnInfo.setOnClickListener {
+
+                val binding = DialogAboutAppBinding.inflate(LayoutInflater.from(this@MainDashboard))
+//                val binding = DialogScanQrBinding.inflate(layoutInflater)
+
+                val dialog = Dialog(this@MainDashboard).apply {
+                    setContentView(binding.root)
+                    setCancelable(true)
+                    window?.setBackgroundDrawableResource(android.R.color.transparent)
+                    window?.setLayout(
+                        (context.resources.displayMetrics.widthPixels * 0.92).toInt(), // 92% width
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                binding.btnClose.setOnClickListener { dialog.dismiss() }
+                dialog.show()
+            }
+
+
         }
     }
 
@@ -131,20 +152,21 @@ class MainDashboard : AppCompatActivity() {
         menu.findItem(R.id.navigation_report)?.isVisible = true
 
         when (user.roleID) {
+            //System Administrator, SAP Admin
             "UGR0001", "UGR0002" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
             }
-
+            //School Coordinator
             "UGR0003" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
             }
-
-            "UGR0004" -> {
+            //Student
+            "UGR0004" , "UGR0006"-> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
             }
-
+            //Hospital Supervisor
             "UGR0005" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false

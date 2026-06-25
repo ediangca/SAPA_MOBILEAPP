@@ -5,6 +5,7 @@ It provides a secure, transparent, and efficient digital environment for managin
 This system supports the shared goal of improving healthcare education, training, and service delivery across the province.
 </string>
     <string name="title_activity_main_dashboard">MainDashboard</string>
+    <string name="title_login">Login</string>
     <string name="title_home">Home</string>
     <string name="title_dashboard">Dashboard</string>
     <string name="title_school">Schools</string>

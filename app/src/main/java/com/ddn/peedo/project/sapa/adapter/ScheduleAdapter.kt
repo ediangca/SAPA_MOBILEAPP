@@ -52,9 +52,13 @@ import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.Executors
 
 class ScheduleAdapter(
@@ -70,8 +74,6 @@ class ScheduleAdapter(
     private var isScanning = false
     private lateinit var soundPool: SoundPool
     private var soundId: Int = 0
-    val dateFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
-    val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a") // 👈 12-hour format
 
     private val session by lazy {
         SessionManager(context)
@@ -130,6 +132,10 @@ class ScheduleAdapter(
             }
     }
 
+    val dateFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+    val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a") // 👈 12-hour format
+
+/*
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
     private fun showDepartmentDialog(
@@ -215,6 +221,15 @@ class ScheduleAdapter(
                     }
 
                     qrScan.setOnClickListener {
+
+                        if(slot.isCIPresent == 0){
+                            SweetAlertUtil.showWarning(
+                                context,
+                                "Not Allowed",
+                                "NO CI yet scanned to this schedule. \n Please scan CI first to proceed scanning intern QR."
+                            )
+                            return@setOnClickListener
+                        }
                         if (!isWithinSlotTime(slot.startTime, slot.endTime)) {
 
                             val startTime = LocalTime.parse(slot.startTime, dateFormatter)
@@ -289,6 +304,197 @@ class ScheduleAdapter(
         btnClose.setOnClickListener { dialog.dismiss() }
         dialog.window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
 
+
+        dialog.show()
+    }
+*/
+
+
+    @SuppressLint("ClickableViewAccessibility", "UseKtx")
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun showDepartmentDialog(
+        context: Context,
+        school: String?,
+        hospital: String?,
+        department: String?,
+        slots: List<VwSlot>
+    ) {
+        soundPool = SoundPool.Builder().setMaxStreams(1).build()
+        soundId = soundPool.load(context, R.raw.beep, 1)
+
+        val dialog = Dialog(context, R.style.BottomDialogStyle)
+        val bindingDialogDepartmentShifts =
+            DialogDepartmentShiftsBinding.inflate(LayoutInflater.from(context))
+        dialog.setContentView(bindingDialogDepartmentShifts.root)
+        dialog.setCancelable(true)
+
+        val schoolTitle = dialog.findViewById<TextView>(R.id.txtSchoolTitle)
+        val departmentTitle = dialog.findViewById<TextView>(R.id.txtDepartmentTitle)
+        val container = dialog.findViewById<LinearLayout>(R.id.shiftListContainer)
+        val btnClose = dialog.findViewById<TextView>(R.id.btnClose)
+        val progressLoading = dialog.findViewById<ProgressBar>(R.id.progressLoading)
+
+        schoolTitle.text = school ?: "School"
+        (if (hospital != null && department != null) "$hospital - $department" else "Department").also {
+            departmentTitle.text = it
+        }
+
+        val groupedSlots = slots.groupBy { it.slotID }
+
+        // Show spinner, hide list while loading
+        progressLoading.visibility = View.VISIBLE
+        container.visibility = View.GONE
+
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                // Load all slot groups concurrently
+                val deferredRows = groupedSlots.map { (_, slotGroup) ->
+                    async(Dispatchers.IO) {
+                        val slot = slotGroup.first()
+                        try {
+                            val res = RetrofitClient
+                                .create(context)
+                                .getAppointedStudentsBySlotID(slot.slotID)
+
+                            if (!res.isSuccessful) {
+                                Log.d("ScheduleFragment_INFO", "Error loading students")
+                                return@async null
+                            }
+                            val appointedStudent = res.body() ?: emptyList()
+                            slot to appointedStudent
+
+                        } catch (e: Exception) {
+                            Log.e("ScheduleFragment_INFO", "Error loading appointed Student", e)
+                            null
+                        }
+                    }
+                }
+
+                val results = deferredRows.awaitAll()
+
+                Log.d("ScheduleFragment_INFO", "Results Loaded students for slot: $results")
+
+                // Build rows on the main thread once everything has loaded
+                results.filterNotNull().forEach { (slot, appointedStudent) ->
+                    val row =
+                        LayoutInflater.from(context)
+                            .inflate(R.layout.item_shift_row, container, false)
+
+                    val txtShift = row.findViewById<TextView>(R.id.txtShiftName)
+                    val txtShiftTime = row.findViewById<TextView>(R.id.txtShiftTime)
+                    val txtAlloc = row.findViewById<TextView>(R.id.txtAllocation)
+                    val qrScan = row.findViewById<AppCompatImageButton>(R.id.scanQRAttendance)
+
+                    val allocated = appointedStudent.size
+                    val capacity = slot.allocation ?: 0
+
+                    txtShift.text = slot.shiftName
+//                    txtShiftTime.text = "${to12Hour(slot.startTime)} - ${to12Hour(slot.endTime)}"
+                    txtShiftTime.text = "${to12HourLegacy(slot.startTime)} - ${to12HourLegacy(slot.endTime)}"
+
+
+                    txtAlloc.text = if (capacity > 0) "$allocated / $capacity" else "0"
+
+                    val userJson = session.getUser()
+                    user = Gson().fromJson(userJson.toString(), VwUser::class.java)
+
+                    qrScan.visibility = when (user.roleID) {
+                        "UGR0001", "UGR0002", "UGR0005" -> View.VISIBLE
+                        else -> View.GONE
+                    }
+
+                    if (allocated <= 0) {
+                        qrScan.visibility = View.GONE
+                    }
+
+//                    qrScan.setOnClickListener {
+//                        onQrScanClicked(slot)
+//                    }
+
+                    val isAttendanceRestrictionEnabled =
+                        session.getSettingValue("ActivateAttendanceTimeRestriction") == "1"
+
+                    qrScan.setOnClickListener {
+
+                        if(slot.isCIPresent == 0){
+                            SweetAlertUtil.showWarning(
+                                context,
+                                "Not Allowed",
+                                "NO CI yet scanned to this schedule. \n Please scan CI first to proceed scanning intern QR."
+                            )
+                            return@setOnClickListener
+                        }
+
+                        val isTimeRestricted = slot.isTimeRestricted ?: false
+
+                        if ((isAttendanceRestrictionEnabled && isTimeRestricted) && !isWithinSlotTime(slot.startTime, slot.endTime) ) {
+
+                            val startTime = LocalTime.parse(slot.startTime, dateFormatter)
+                            val endTime = LocalTime.parse(slot.endTime, dateFormatter)
+
+
+                            val adjustedStart = startTime.minusHours(1)   // 1 hour before
+                            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
+
+
+                            SweetAlertUtil.showWarning(
+                                context,
+                                "Not Allowed",
+                                "QR scanning is only allowed between\n" +
+                                        "${adjustedStart.format(timeFormatter)} - ${adjustedEnd.format(timeFormatter)}"
+                            )
+
+                            return@setOnClickListener
+                        }
+
+                        onQrScanClicked(slot)
+                    }
+
+                    row.setOnClickListener {
+                        onShiftClick(slot)
+                        showStudentsDialog(slot)
+                    }
+
+                    container.addView(row)
+                }
+            } finally {
+                // Hide spinner, show list regardless of success/failure
+                progressLoading.visibility = View.GONE
+                container.visibility = View.VISIBLE
+            }
+        }
+
+        val sheet = dialog.findViewById<View>(R.id.sheetContainer)
+
+        var startY = 0f
+
+        sheet.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = event.rawY - startY
+                    if (delta > 0) {
+                        v.translationY = delta
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (v.translationY > v.height / 4) {
+                        dialog.dismiss()
+                    } else {
+                        v.animate().translationY(0f).setDuration(200).start()
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+
+        btnClose.setOnClickListener { dialog.dismiss() }
+        dialog.window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
 
         dialog.show()
     }
@@ -399,6 +605,18 @@ class ScheduleAdapter(
             LocalTime.parse(time, input).format(output)
         } catch (e: Exception) {
             time // fallback (won’t crash)
+        }
+    }
+
+    private fun to12HourLegacy(time24: String?): String {
+        if (time24.isNullOrBlank()) return ""
+        return try {
+            val inputFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            val outputFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
+            val date = inputFormat.parse(time24)
+            date?.let { outputFormat.format(it) } ?: time24
+        } catch (e: Exception) {
+            time24
         }
     }
 
@@ -548,7 +766,7 @@ class ScheduleAdapter(
                                             SweetAlertUtil.showError(
                                                 context,
                                                 "Error",
-                                                "Unable to validate attendance."
+                                                validateResponse.message() ?: "Either Attendant is not found!"
                                             )
                                             return@launch
                                         }
@@ -557,11 +775,10 @@ class ScheduleAdapter(
 
                                         // 2️⃣ Attendance already exists
                                         if (validation.hasAttendance) {
-
                                             SweetAlertUtil.showWarning(
                                                 context,
                                                 "Already Recorded",
-                                                "This intern already has attendance for this slot."
+                                                "This CI/intern already has attendance for this slot."
                                             )
                                             return@launch
                                         }
@@ -693,9 +910,6 @@ class ScheduleAdapter(
                                         }, 3000)
                                     }
                                 }
-//                                Handler(Looper.getMainLooper()).postDelayed({
-//                                    isScanning = false
-//                                }, 3000)
                             }
                         }
                     )
@@ -709,6 +923,10 @@ class ScheduleAdapter(
             )
 
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    suspend fun SessionManager.getSettingValue(key: String): String? {
+        return getSettings()?.firstOrNull { it.settingKey == key }?.settingValue
     }
 
     private fun stopCamera() {

@@ -474,28 +474,38 @@ class ScheduleFragment : Fragment() {
 
                 val response = when (user.roleID) {
 
+                    // ADMIN / SUPERVISOR
                     "UGR0001", "UGR0002" -> {
-                        Log.d("HomeFragment_INFO", "Admin / Supervisor")
+                        Log.d("ScheduleFragment_INFO", "Admin / Supervisor")
                         api.getSlots(year)
                     }
 
+                    // SCHOOL COORDINATOR
                     "UGR0003" -> {
-                        Log.d("HomeFragment_INFO", "Student")
+                        Log.d("ScheduleFragment_INFO", "Student")
                         api.getSlotsByUserID(user.userID, year)
                     }
 
+                    // SUPERVISOR
+                    "UGR0006" -> {
+                        Log.d("ScheduleFragment_INFO", "Hospital")
+                        api.getSlotsByCI(user.userID ?: "", year)
+                    }
+
+                    // STUDENT
                     "UGR0004" -> {
-                        Log.d("HomeFragment_INFO", "Appointed User")
+                        Log.d("ScheduleFragment_INFO", "Appointed User")
                         api.getSlotsByAppointUserID(user.userID, year)
                     }
 
+                    // SUPERVISOR
                     "UGR0005" -> {
-                        Log.d("HomeFragment_INFO", "Hospital")
+                        Log.d("ScheduleFragment_INFO", "Hospital")
                         api.getSlotsByHospitalID(user.hospitalID ?: "", year)
                     }
 
                     else -> {
-                        Log.e("HomeFragment_INFO", "Unknown role")
+                        Log.e("ScheduleFragment_INFO", "Unknown role")
                         return@launch
                     }
                 }
@@ -506,6 +516,8 @@ class ScheduleFragment : Fragment() {
                 hideLoading()
                 binding.swipeRefresh.isRefreshing = false
                 list.clear()
+
+                Log.d("ScheduleFragment_INFO", "Schedule response: $response")
 
                 if (response.isSuccessful) {
                     list.addAll(response.body().orEmpty())
