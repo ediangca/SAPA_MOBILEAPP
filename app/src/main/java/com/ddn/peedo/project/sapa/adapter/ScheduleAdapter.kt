@@ -101,6 +101,7 @@ class ScheduleAdapter(
         // =========================
         holder.binding.dateSlot.text = item.date
         holder.binding.tvSchoolName.text = item.schoolName
+        holder.binding.tvCIName.text = item.CIName
 
         holder.binding.tvHospitalName.text = item.hospitalName ?: ""
 
@@ -116,7 +117,7 @@ class ScheduleAdapter(
                     R.layout.item_shift_chip, holder.binding.shiftChipContainer, false
                 ) as TextView
 
-                chip.text = department ?: "Department"
+                chip.text = department ?: "SectionName"
 
                 chip.setOnClickListener {
                     showDepartmentDialog(
@@ -416,36 +417,36 @@ class ScheduleAdapter(
 
                     qrScan.setOnClickListener {
 
-                        if(slot.isCIPresent == 0){
-                            SweetAlertUtil.showWarning(
-                                context,
-                                "Not Allowed",
-                                "NO CI yet scanned to this schedule. \n Please scan CI first to proceed scanning intern QR."
-                            )
-                            return@setOnClickListener
-                        }
+//                        if(slot.isCIPresent == 0){
+//                            SweetAlertUtil.showWarning(
+//                                context,
+//                                "Not Allowed",
+//                                "NO CI yet scanned to this schedule. \n Please scan CI first to proceed scanning intern QR."
+//                            )
+//                            return@setOnClickListener
+//                        }
 
-                        val isTimeRestricted = slot.isTimeRestricted ?: false
-
-                        if ((isAttendanceRestrictionEnabled && isTimeRestricted) && !isWithinSlotTime(slot.startTime, slot.endTime) ) {
-
-                            val startTime = LocalTime.parse(slot.startTime, dateFormatter)
-                            val endTime = LocalTime.parse(slot.endTime, dateFormatter)
-
-
-                            val adjustedStart = startTime.minusHours(1)   // 1 hour before
-                            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
-
-
-                            SweetAlertUtil.showWarning(
-                                context,
-                                "Not Allowed",
-                                "QR scanning is only allowed between\n" +
-                                        "${adjustedStart.format(timeFormatter)} - ${adjustedEnd.format(timeFormatter)}"
-                            )
-
-                            return@setOnClickListener
-                        }
+//                        val isTimeRestricted = slot.isTimeRestricted ?: false
+//
+//                        if ((isAttendanceRestrictionEnabled && isTimeRestricted) && !isWithinSlotTime(slot.startTime, slot.endTime) ) {
+//
+//                            val startTime = LocalTime.parse(slot.startTime, dateFormatter)
+//                            val endTime = LocalTime.parse(slot.endTime, dateFormatter)
+//
+//
+//                            val adjustedStart = startTime.minusHours(1)   // 1 hour before
+//                            val adjustedEnd = startTime.plusHours(1)      // 1 hour after
+//
+//
+//                            SweetAlertUtil.showWarning(
+//                                context,
+//                                "Not Allowed",
+//                                "QR scanning is only allowed between\n" +
+//                                        "${adjustedStart.format(timeFormatter)} - ${adjustedEnd.format(timeFormatter)}"
+//                            )
+//
+//                            return@setOnClickListener
+//                        }
 
                         onQrScanClicked(slot)
                     }

@@ -418,6 +418,7 @@ class ScheduleFragment : Fragment() {
                 val first = group.first()
                 HospitalScheduleUi(
                     schoolName = first.schoolName,
+                    CIName = first.ci_fullname,
                     hospitalName = first.hospitalName,
                     date = first.dateSlot,
                     slots = group

@@ -125,7 +125,7 @@ class ProfileFragment : Fragment() {
                     showLogoutConfirmation(session)
                 }
 
-                if (user.roleID == "UGR0004" || user.roleID == "UGR0006") {
+                if (user.roleID == "UGR0001" || user.roleID == "UGR0004" || user.roleID == "UGR0006") {
 
                     val qrBitmap = generateQr(user.userID, 300)
                     profilePicture.setImageBitmap(qrBitmap)
