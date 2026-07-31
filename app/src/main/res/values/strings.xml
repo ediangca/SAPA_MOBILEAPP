@@ -11,6 +11,7 @@ This system supports the shared goal of improving healthcare education, training
     <string name="title_school">Schools</string>
     <string name="title_billing">Billing</string>
     <string name="title_schedule">Schedule</string>
+    <string name="title_users">Users</string>
     <string name="title_report">Reports</string>
     <string name="title_settings">Settings</string>
     <string name="title_profile">Profile</string>
@@ -43,4 +44,8 @@ This system supports the shared goal of improving healthcare education, training
     <string name="back">Back</string>
     <string name="More">More</string>
     <string name="chat">Chat</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="resend_verification">Resend Verification</string>
+    <string name="approve_account">Approve Account</string>
 </resources>

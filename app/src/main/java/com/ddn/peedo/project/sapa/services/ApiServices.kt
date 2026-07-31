@@ -13,6 +13,7 @@ import com.ddn.peedo.project.sapa.model.VwAppointedStudent
 import com.ddn.peedo.project.sapa.model.VwPrivilege
 import com.ddn.peedo.project.sapa.model.VwSlot
 import com.ddn.peedo.project.sapa.model.VwUser
+import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.Path
@@ -46,15 +47,23 @@ interface ApiService {
     ): Response<AuthResponse>
 
     //-----------------Users-----------------//
-//    @GET("Users/GetUserbyUsername")
-//    suspend fun getUserByUsername(
-//        @Query("username") username: String
-//    ): Response<User>
+    @GET("Users")
+    suspend fun getUsers(): Response<List<VwUser>>
+
     @GET("Users/GetUserbyUsername/{username}")
     suspend fun getUserByUsername(
         @Path("username") username: String
     ): Response<VwUser>
 
+    @POST("Users/resend-verification")
+    suspend fun resendVerification(
+        @Body email: String
+    ): Response<ResponseBody>
+
+    @POST("Users/Approve/{userId}")
+    suspend fun approveUser(
+        @Path("userId") userId: String
+    ): Response<ResponseBody>
 
 
     //-----------------Privileges-----------------//
@@ -131,3 +140,7 @@ interface ApiService {
     suspend fun getSettings(): Response<List<Settings>>
 
 }
+
+data class GenericResponse(
+    val message: String? = null
+)

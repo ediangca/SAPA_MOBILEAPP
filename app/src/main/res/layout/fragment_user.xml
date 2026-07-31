@@ -8,7 +8,6 @@
     android:background="@color/background_light"
     android:paddingBottom="110dp"
     tools:context=".ui.dashboard.ui.school.SchoolFragment">
-
     <!-- AppBarLayout for Always Visible Sticky Header -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/app_bar_layout"
@@ -17,7 +16,7 @@
         android:background="@color/background_light"
         app:elevation="4dp">
 
-
+        <!-- Title row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -34,163 +33,123 @@
                 android:layout_weight="1"
                 android:fontFamily="@font/poppins_bold"
                 android:gravity="center"
-                android:text="Schedules"
+                android:text="Users"
                 android:textColor="@color/primary"
                 android:textSize="24sp" />
 
             <ImageButton
-                android:id="@+id/btnToggleCalendar"
+                android:id="@+id/btnToggleFilter"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Toggle filters"
                 android:src="@drawable/vector_filter"
                 app:tint="@color/primary" />
         </LinearLayout>
 
-        <!-- Calendar Header -->
-
-        <LinearLayout
-            android:id="@+id/calendarContainer"
+        <!-- Search box -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/searchLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            app:layout_scrollFlags="scroll|exitUntilCollapsed">
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="8dp"
+            app:boxCornerRadiusBottomEnd="24dp"
+            app:boxCornerRadiusBottomStart="24dp"
+            app:boxCornerRadiusTopEnd="24dp"
+            app:boxCornerRadiusTopStart="24dp"
+            app:boxStrokeColor="@color/primary"
+            app:endIconMode="clear_text"
+            app:hintEnabled="false"
+            app:startIconDrawable="@drawable/vector_search"
+            app:startIconTint="@color/secondary">
 
-            <!-- Calendar Header -->
-            <LinearLayout
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etSearch"
                 android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:background="@android:color/transparent"
+                android:hint="Search by name"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:paddingStart="4dp"
+                android:paddingEnd="12dp"
+                android:textSize="14sp" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Toggleable filter container -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/filterContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="10dp"
+            android:visibility="visible">
+
+            <!-- Guideline keeps both label columns aligned regardless of text length -->
+            <androidx.constraintlayout.widget.Guideline
+                android:id="@+id/filterLabelGuideline"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:orientation="vertical"
+                app:layout_constraintGuide_begin="120dp" />
+
+            <TextView
+                android:id="@+id/lblRole"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_marginEnd="10dp"
+                android:fontFamily="@font/poppins_bold"
                 android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="12dp">
+                android:text="Filter by Role"
+                android:textColor="@color/primary"
+                android:textSize="16sp"
+                app:layout_constraintEnd_toStartOf="@id/filterLabelGuideline"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <ImageButton
-                    android:id="@+id/btnPrevMonth"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/vector_chevron_left"
-                    app:tint="@color/primary" />
+            <androidx.appcompat.widget.AppCompatSpinner
+                android:id="@+id/spinnerRole"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:background="@drawable/box_overlay_style"
+                android:spinnerMode="dropdown"
+                android:textAlignment="center"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/filterLabelGuideline"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <TextView
-                    android:id="@+id/txtMonthYear"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="October 2025"
-                    android:textColor="@color/primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <ImageButton
-                    android:id="@+id/btnNextMonth"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/vector_chevron_right"
-                    app:tint="@color/primary" />
-                ...
-            </LinearLayout>
-
-            <!-- Week names -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingHorizontal="8dp">
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Mon" />
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Tue" />
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Wed" />
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Thu" />
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Fri" />
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Sat" />
-
-                <TextView
-                    style="@style/WeekLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Sun" />
-            </LinearLayout>
-
-            <!-- Calendar Recycler -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/calendarRecycler"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false" />
-
-            <!-- Status filter -->
-            <LinearLayout
-                android:id="@+id/header_section"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+            <TextView
+                android:id="@+id/lblStatus"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="10dp"
+                android:fontFamily="@font/poppins_bold"
                 android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingHorizontal="16dp"
-                android:paddingTop="10dp"
-                android:weightSum="12">
+                android:text="Filter by Status"
+                android:textColor="@color/primary"
+                android:textSize="16sp"
+                app:layout_constraintEnd_toStartOf="@id/filterLabelGuideline"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/spinnerRole" />
 
-                <TextView
-                    android:id="@+id/lblStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="2"
-                    android:fontFamily="@font/poppins_bold"
-                    android:text="Filter by Status"
-                    android:textColor="@color/primary"
-                    android:textSize="16sp" />
+            <androidx.appcompat.widget.AppCompatSpinner
+                android:id="@+id/spinnerStatus"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/box_overlay_style"
+                android:spinnerMode="dropdown"
+                android:textAlignment="center"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/filterLabelGuideline"
+                app:layout_constraintTop_toBottomOf="@id/spinnerRole" />
 
-                <androidx.appcompat.widget.AppCompatSpinner
-                    android:id="@+id/spinnerStatus"
-                    android:layout_width="0dp"
-                    android:layout_height="42dp"
-                    android:layout_weight="10"
-                    android:background="@drawable/box_overlay_style"
-                    android:spinnerMode="dropdown"
-                    android:textAlignment="center" />
-
-            </LinearLayout>
-
-            <!-- Legend -->
-            <LinearLayout
-                android:id="@+id/legendContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="8dp" />
-        </LinearLayout>
-
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -206,7 +165,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
-            <!-- LIST Calendar Days -->
+            <!-- LIST -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/list"
                 android:layout_width="match_parent"
@@ -227,6 +186,7 @@
                     android:layout_gravity="center"
                     android:indeterminate="true"
                     android:indeterminateTint="@color/primary" />
+
             </FrameLayout>
 
             <!-- EMPTY STATE -->
@@ -242,7 +202,7 @@
                 android:visibility="visible">
 
                 <ImageView
-                    android:layout_width="match_parent"
+                    android:layout_width="120dp"
                     android:layout_height="120dp"
                     android:src="@drawable/vector_empty" />
 
@@ -295,7 +255,7 @@
 
                 <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnRetry"
-                    android:layout_width="250dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:gravity="center"

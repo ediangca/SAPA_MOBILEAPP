@@ -32,10 +32,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="5dp"
+            android:drawableTint="@color/secondary"
             android:textColor="@color/primary"
             android:textSize="13sp"
             app:drawableStartCompat="@drawable/vector_location"
-            android:drawableTint="@color/secondary"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/tvSchoolName" />

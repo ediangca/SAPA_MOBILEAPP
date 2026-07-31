@@ -75,8 +75,6 @@ class StudentAdapter(
                 }
 
 
-
-
             } catch (e: Exception) {
                 Log.d("ScheduleFragment_INFO", "Error validating attendance", e)
                 SweetAlertUtil.showError(

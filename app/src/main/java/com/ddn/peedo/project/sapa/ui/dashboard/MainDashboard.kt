@@ -35,6 +35,7 @@ import com.ddn.peedo.project.sapa.ui.dashboard.ui.profile.ProfileFragment
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.reports.ReportsFragment
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.schedule.ScheduleFragment
 import com.ddn.peedo.project.sapa.ui.dashboard.ui.school.SchoolFragment
+import com.ddn.peedo.project.sapa.ui.dashboard.ui.users.UsersFragment
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.gson.Gson
@@ -50,6 +51,8 @@ class MainDashboard : AppCompatActivity() {
     private lateinit var homeFragment: HomeFragment
     private lateinit var schoolFragment: SchoolFragment
     private lateinit var scheduleFragment: ScheduleFragment
+
+    private lateinit var usersFragment: UsersFragment
     private lateinit var reportFragment: ReportsFragment
     private lateinit var profileFragment: ProfileFragment
     private var qrDialog: Dialog? = null
@@ -89,6 +92,7 @@ class MainDashboard : AppCompatActivity() {
         schoolFragment = SchoolFragment()
         scheduleFragment = ScheduleFragment()
         reportFragment = ReportsFragment()
+        usersFragment = UsersFragment()
         profileFragment = ProfileFragment()
 
 
@@ -147,9 +151,10 @@ class MainDashboard : AppCompatActivity() {
         // Reset all (important if reused)
         menu.findItem(R.id.navigation_home)?.isVisible = true
         menu.findItem(R.id.navigation_schedule)?.isVisible = true
-        menu.findItem(R.id.navigation_profile)?.isVisible = true
         menu.findItem(R.id.navigation_school)?.isVisible = true
+        menu.findItem(R.id.navigation_user)?.isVisible = true
         menu.findItem(R.id.navigation_report)?.isVisible = true
+        menu.findItem(R.id.navigation_profile)?.isVisible = true
 
         when (user.roleID) {
             //System Administrator, SAP Admin
@@ -160,16 +165,19 @@ class MainDashboard : AppCompatActivity() {
             "UGR0003" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_user)?.isVisible = false
             }
             //Student
             "UGR0004" , "UGR0006"-> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_user)?.isVisible = false
             }
             //Hospital Supervisor
             "UGR0005" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_user)?.isVisible = false
             }
         }
     }
@@ -307,6 +315,15 @@ class MainDashboard : AppCompatActivity() {
 //                    homeFragment.arguments = bundle
                     mainFrame = supportFragmentManager.beginTransaction()
                     mainFrame.replace(R.id.main_fragment, scheduleFragment);
+                    mainFrame.addToBackStack(null);
+                    mainFrame.commit();
+                    return true
+                }
+
+                R.id.navigation_user -> {
+//                    homeFragment.arguments = bundle
+                    mainFrame = supportFragmentManager.beginTransaction()
+                    mainFrame.replace(R.id.main_fragment, usersFragment);
                     mainFrame.addToBackStack(null);
                     mainFrame.commit();
                     return true

@@ -16,6 +16,10 @@
         android:icon="@drawable/vector_calendar"
         android:title="@string/title_schedule" />
 
+    <item
+        android:id="@+id/navigation_user"
+        android:icon="@drawable/vector_users"
+        android:title="@string/title_users" />
 
     <item
         android:id="@+id/navigation_report"
