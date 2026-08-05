@@ -1,4 +1,4 @@
-package com.ddn.peedo.project.sapa.util
+package com.ddn.peedo.project.sapa.utils
 
 object UserStatusUtil {
     const val UNVERIFIED = 'U'

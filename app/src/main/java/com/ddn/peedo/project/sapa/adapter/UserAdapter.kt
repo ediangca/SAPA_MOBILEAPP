@@ -9,7 +9,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.databinding.ItemUserBinding
 import com.ddn.peedo.project.sapa.model.VwUser
-import com.ddn.peedo.project.sapa.util.UserStatusUtil
+import com.ddn.peedo.project.sapa.utils.UserStatusUtil
 
 class UserAdapter(
     private val listener: UserActionListener

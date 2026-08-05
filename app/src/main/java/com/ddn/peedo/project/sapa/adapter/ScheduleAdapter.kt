@@ -110,7 +110,7 @@ class ScheduleAdapter(
         // =========================
         holder.binding.shiftChipContainer.removeAllViews()
 
-        item.slots.groupBy { it.sectionName }
+        item.slots.filter { it.slotStatus == 1 }.groupBy { it.sectionName }
             .forEach { (department, departmentSlots) ->
 
                 val chip = LayoutInflater.from(holder.itemView.context).inflate(

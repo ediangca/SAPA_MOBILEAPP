@@ -165,7 +165,6 @@ class MainDashboard : AppCompatActivity() {
             "UGR0003" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
-                binding.mainNav.menu.findItem(R.id.navigation_user)?.isVisible = false
             }
             //Student
             "UGR0004" , "UGR0006"-> {

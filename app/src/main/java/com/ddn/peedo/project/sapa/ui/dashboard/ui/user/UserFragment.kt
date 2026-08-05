@@ -2,6 +2,7 @@ package com.ddn.peedo.project.sapa.ui.dashboard.ui.users
 
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
@@ -15,12 +16,14 @@ import com.ddn.peedo.project.sapa.databinding.FragmentUserBinding
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.services.ApiService
-import com.ddn.peedo.project.sapa.util.UserStatusUtil
+import com.ddn.peedo.project.sapa.utils.UserStatusUtil
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.net.UnknownHostException
 import androidx.core.widget.addTextChangedListener
+import com.ddn.peedo.project.sapa.store.SessionManager
+import com.ddn.peedo.project.sapa.util.UserRoleUtil
 import kotlinx.coroutines.delay
 
 class UsersFragment : Fragment(), UserAdapter.UserActionListener {
@@ -30,15 +33,23 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
 
     private lateinit var api: ApiService
     private lateinit var adapter: UserAdapter
+    private val session by lazy {
+        SessionManager(requireContext())
+    }
     private var allUsers: List<VwUser> = emptyList()
+    private var currentUserId: String? = null
+    private var currentUserRoleId: String? = null
+    private var currentUserSchoolId: String? = null
     private val statusFilters =
         listOf("All", "Unverified", "Pending", "Approved", "Suspended", "Inactive")
 
     private var roleFilters: List<String> = listOf("All")
-    private val excludedRoleIds = setOf("UGR0000", "UGR0001")
+
+    private val excludedRoleIds = setOf(UserRoleUtil.SYSTEM_ADMIN, UserRoleUtil.ADMIN)
 
     private var currentSearchQuery: String = ""
     private var searchDebounceJob: Job? = null
+
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -142,11 +153,29 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         showLoading()
         lifecycleScope.launch {
             try {
+                val sessionUser = session.getUser()
+                Log.d("UsersFragment", "Session user raw JSON: $sessionUser")
+
+                currentUserId = sessionUser?.optString("userID")?.takeIf { it.isNotBlank() }
+                currentUserRoleId = sessionUser?.optString("roleID")?.takeIf { it.isNotBlank() }
+                currentUserSchoolId = sessionUser?.optString("schoolID")?.takeIf { it.isNotBlank() }
+
+                Log.d("UsersFragment", "currentUserId=$currentUserId, " +
+                        "currentUserRoleId=$currentUserRoleId, currentUserSchoolId=$currentUserSchoolId")
+
                 val response = api.getUsers()
                 binding.swipeRefresh.isRefreshing = false
 
+                if (currentUserRoleId == null) {
+                    Log.e("UsersFragment", "roleID missing from session — check SessionManager keys")
+                }
+
                 if (response.isSuccessful) {
-                    allUsers = response.body().orEmpty()
+                    val fetchedUsers = response.body().orEmpty()
+                    Log.d("UsersFragment", "Fetched ${fetchedUsers.size} users from API")
+
+                    allUsers = scopeUsersByRole(fetchedUsers)
+                    Log.d("UsersFragment", "After role/school scoping: ${allUsers.size} users remain")
 
                     // Build role filter options from actual data, excluding admin/default roles
                     val distinctRoles = allUsers
@@ -154,19 +183,71 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                         .map { it.rolename }
                         .distinct()
                         .sorted()
+                    Log.d("UsersFragment", "Role filter options built: $distinctRoles")
                     setupRoleSpinner(distinctRoles)
+
+                    applyFilters()
 //                    applyFilter(statusFilters[binding.spinnerStatus.selectedItemPosition])
                 } else {
+                    val errorBody = response.errorBody()?.string()
+                    Log.e("UsersFragment", "getUsers() failed: code=${response.code()}, body=$errorBody")
                     showEmpty("Failed to load users (${response.code()})")
+                    SweetAlertUtil.showError(
+                        requireContext(),
+                        "Failed to Load Users",
+                        "Server returned an error (code ${response.code()})."
+                    )
                 }
             } catch (e: UnknownHostException) {
+                Log.e("UsersFragment", "No internet connection", e)
                 binding.swipeRefresh.isRefreshing = false
                 showNoInternet()
             } catch (e: Exception) {
+                Log.e("UsersFragment", "Unexpected error loading users", e)
                 binding.swipeRefresh.isRefreshing = false
                 showEmpty("Something went wrong: ${e.message}")
+                SweetAlertUtil.showError(
+                    requireContext(),
+                    "Something Went Wrong",
+                    e.message ?: "Unknown error occurred while loading users."
+                )
             }
         }
+    }
+
+    /**
+     * System Admin / Admin -> sees every user, no restrictions.
+     * School Coordinator (and anyone else school-scoped) -> only sees users
+     * belonging to their own school, and only within Coordinator/Instructor/Student roles.
+     */
+    private fun scopeUsersByRole(users: List<VwUser>): List<VwUser> {
+        val roleId = currentUserRoleId
+
+        val roleScoped = when {
+            roleId == null -> {
+                Log.e("UsersFragment", "scopeUsersByRole: roleId is null, returning empty list")
+                emptyList()
+            }
+            roleId in UserRoleUtil.adminTierRoles -> {
+                Log.d("UsersFragment", "scopeUsersByRole: admin-tier role ($roleId), showing all users")
+                users
+            }
+            else -> {
+                val schoolId = currentUserSchoolId
+                if (schoolId.isNullOrBlank()) {
+                    Log.e("UsersFragment", "scopeUsersByRole: non-admin role ($roleId) but schoolId is null/blank, returning empty list")
+                    emptyList()
+                } else {
+                    val filtered = users.filter { user ->
+                        user.roleID in UserRoleUtil.schoolScopedRoles && user.schoolID == schoolId
+                    }
+                    Log.d("UsersFragment", "scopeUsersByRole: school-scoped role ($roleId), schoolId=$schoolId, matched ${filtered.size}/${users.size}")
+                    filtered
+                }
+            }
+        }
+
+        return roleScoped.filter { it.userID != currentUserId }
     }
 
     private fun applyFilter(filter: String) {

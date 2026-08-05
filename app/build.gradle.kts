@@ -25,9 +25,6 @@ android {
                 "proguard-rules.pro"
             )
         }
-        buildFeatures {
-            viewBinding = true
-        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -91,6 +88,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 
 
 }

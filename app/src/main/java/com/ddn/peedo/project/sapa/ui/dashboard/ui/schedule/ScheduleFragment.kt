@@ -318,7 +318,7 @@ class ScheduleFragment : Fragment() {
         val today = LocalDate.now()
 
         val grouped = slots
-            .filter { it.dateSlot != null }
+            .filter { it.dateSlot != null && it.slotStatus == 1 }
             .groupBy { LocalDate.parse(it.dateSlot) }
 
         val days = mutableListOf<CalendarDay>()

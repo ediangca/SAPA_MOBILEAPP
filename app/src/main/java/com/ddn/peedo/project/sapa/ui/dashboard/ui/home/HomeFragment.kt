@@ -1,19 +1,23 @@
 package com.ddn.peedo.project.sapa.ui.dashboard.ui.home
 
+import android.animation.ValueAnimator
+import android.annotation.SuppressLint
+import android.app.Dialog
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.ddn.peedo.project.sapa.adapter.RecentScheduleAdapter
+import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.adapter.ScheduleAdapter
+import com.ddn.peedo.project.sapa.databinding.DialogTodayScheduleBinding
 import com.ddn.peedo.project.sapa.databinding.FragmentHomeBinding
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
 import com.ddn.peedo.project.sapa.model.DashboardSummary
@@ -21,12 +25,16 @@ import com.ddn.peedo.project.sapa.model.VwSlot
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.store.SessionManager
+import com.ddn.peedo.project.sapa.util.UserRoleUtil
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.*
 
 class HomeFragment : Fragment() {
 
@@ -45,7 +53,13 @@ class HomeFragment : Fragment() {
     private val list = ArrayList<VwSlot>()
 
     private var recentSchedules: List<VwSlot> = emptyList()
+    private var todaySlotsCache: List<VwSlot> = emptyList()
+
     private lateinit var scheduleadapter: ScheduleAdapter
+
+    private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, MMM dd, yyyy", Locale.ENGLISH)
+    private var isSheetExpanded = false
+    private var collapsedSheetHeight = 0
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -63,8 +77,8 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        initRecycler()
         initComponent()
+        initRecycler()
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -103,13 +117,16 @@ class HomeFragment : Fragment() {
                 swipeRefresh.setOnRefreshListener {
                     loadRecentSchedule(user)
                 }
+
+                todayScheduleCard.setOnClickListener {
+                    showTodayScheduleDialog()
+                }
+
             }
 
             Log.d("HomeFragment_INFO", "SESSION User: $user")
 
             loadDashboard(user)
-            loadRecentSchedule(user)
-
         }
 
     }
@@ -128,6 +145,16 @@ class HomeFragment : Fragment() {
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = scheduleadapter
+
+
+
+        binding.list.layoutManager = LinearLayoutManager(requireContext())
+        binding.list.adapter = scheduleadapter
+//        binding.list.isNestedScrollingEnabled = false   // <-- add this line
+
+        binding.list.post {
+            Log.d("HomeFragment_INFO", "RecyclerView height: ${binding.list.height}, item count: ${scheduleadapter.itemCount}")
+        }
     }
 
     fun loadDashboard(user: VwUser) {
@@ -194,7 +221,17 @@ class HomeFragment : Fragment() {
                     cardFuture.visibility = View.VISIBLE
                 }
             }
+
+
+            // NEW: gate + populate analytics
+            val canSeeAnalytics = UserRoleUtil.canViewAnalytics(user.roleID)
+            analyticsSection.visibility = if (canSeeAnalytics) View.VISIBLE else View.GONE
+            if (canSeeAnalytics) {
+                bindStatusBreakdownChart(data)
+            }
         }
+
+        loadRecentSchedule(user)
     }
     @RequiresApi(Build.VERSION_CODES.O)
     fun loadRecentSchedule(user: VwUser) {
@@ -264,14 +301,18 @@ class HomeFragment : Fragment() {
     @RequiresApi(Build.VERSION_CODES.O)
     fun processSlots(data: List<VwSlot>) {
 
-        if (data.isEmpty()) return
+        if (data.isEmpty()) {
+            updateEmptyState(emptyList())
+            updateTodayScheduleCard(emptyList())
+            return
+        }
 
         Log.d("HomeFragment_INFO", "All Slots: ${Gson().toJson(data)}")
 
         // ✅ Filter active slots
         slots = data.filter { it.slotStatus == 1 }
 
-        // ✅ Sort by date_created DESC
+        // ✅ Sort by date DESC, most recent first (original behavior)
         recentSchedules = slots
             .sortedByDescending {
                 try {
@@ -282,14 +323,36 @@ class HomeFragment : Fragment() {
             }
             .take(10)
 
-        Log.d("HomeFragment_INFO", "Recent: ${Gson().toJson(recentSchedules)}")
-
         val grouped = groupBySchoolHospital(recentSchedules)
-
-        Log.d("HomeFragment_INFO", "Grouped size: ${grouped.size}")
-
         scheduleadapter.updateData(grouped)
         updateEmptyState(recentSchedules)
+
+        // ✅ Today's slots computed separately, purely for the banner + dialog
+        val today = LocalDate.now()
+        val todaySlots = slots.filter {
+            try {
+                LocalDate.parse(it.dateSlot) == today
+            } catch (e: Exception) {
+                false
+            }
+        }
+        updateTodayScheduleCard(todaySlots)
+
+        // NEW: feed the trend chart, only meaningful if the section is visible
+        if (UserRoleUtil.canViewAnalytics(user.roleID)) {
+            bindTrendChart(slots)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun updateTodayScheduleCard(todaySlots: List<VwSlot>) {
+        todaySlotsCache = todaySlots
+
+        binding.todayScheduleCount.text = when (todaySlots.size) {
+            0 -> "No slots"
+            1 -> "1 slot"
+            else -> "${todaySlots.size} slots"
+        }
     }
 
     fun groupBySchoolHospital(
@@ -311,6 +374,285 @@ class HomeFragment : Fragment() {
             }
     }
 
+    @SuppressLint("ClickableViewAccessibility", "UseKtx")
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun showTodayScheduleDialog() {
+        val dialogBinding = DialogTodayScheduleBinding.inflate(layoutInflater)
+
+        val dialog = Dialog(requireContext(), R.style.BottomDialogStyle).apply {
+            setContentView(dialogBinding.root)
+            setCancelable(true)
+            window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        }
+
+        val todayAdapter = ScheduleAdapter(
+            emptyList(),
+            requireContext(),
+            lifecycleOwner = viewLifecycleOwner
+        ) { slot ->
+            // same shift-click behavior as the main list, or leave as TODO
+        }
+
+        dialogBinding.todayScheduleList.layoutManager = LinearLayoutManager(requireContext())
+        dialogBinding.todayScheduleList.adapter = todayAdapter
+
+        dialogBinding.txtDate.text =  LocalDate.now().format(dateFormatter)
+
+        // Wire the drag-to-dismiss + close button first so the dialog is
+        // interactive immediately, even while data is still loading
+        var startY = 0f
+
+        dialogBinding.sheetContainer.post {
+            // Capture the sheet's natural wrap_content height once it's laid out,
+            // so we know what "collapsed" means when animating back down later
+            collapsedSheetHeight = dialogBinding.sheetContainer.height
+        }
+
+        dialogBinding.sheetContainer.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = event.rawY - startY
+                    // Only follow the finger for downward drags (dismiss/collapse gesture).
+                    // Upward drags are handled as a discrete expand action on release,
+                    // not a live-follow, since expanding requires a height change, not just translation.
+                    if (delta > 0) {
+                        v.translationY = delta
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val delta = event.rawY - startY
+                    when {
+                        // Dragged up past threshold -> expand to full screen
+                        !isSheetExpanded && delta < -80 -> {
+                            expandSheet(dialogBinding, v)
+                        }
+                        // Dragged down far enough -> collapse (if expanded) or dismiss (if already collapsed)
+                        delta > v.height / 4 -> {
+                            if (isSheetExpanded) {
+                                collapseSheet(dialogBinding, v)
+                            } else {
+                                dialog.dismiss()
+                            }
+                        }
+                        // Not far enough either direction -> snap back to current state
+                        else -> {
+                            v.animate().translationY(0f).setDuration(200).start()
+                        }
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+
+
+        dialogBinding.btnClose.setOnClickListener { dialog.dismiss() }
+
+        dialog.show()
+
+        // Show spinner, hide list + empty state while fetching fresh data
+        showDialogLoading(dialogBinding)
+
+        lifecycleScope.launch {
+            try {
+                val api = RetrofitClient.api(requireContext())
+                val year = LocalDate.now().year
+
+                val response = when (user.roleID) {
+                    "UGR0001", "UGR0002" -> api.getSlots(year)
+                    "UGR0003" -> api.getSlotsByUserID(user.userID, year)
+                    "UGR0004" -> api.getSlotsByAppointUserID(user.userID, year)
+                    "UGR0005" -> api.getSlotsByHospitalID(user.hospitalID ?: "", year)
+                    "UGR0006" -> api.getSlotsByCI(user.userID, year)
+                    else -> {
+                        showDialogEmpty(dialogBinding)
+                        return@launch
+                    }
+                }
+
+                if (!dialog.isShowing) return@launch // user dismissed while loading
+
+                if (response.isSuccessful && response.body() != null) {
+                    val today = LocalDate.now()
+                    val freshTodaySlots = response.body()!!.filter { slot ->
+                        slot.slotStatus == 1 && try {
+                            LocalDate.parse(slot.dateSlot) == today
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+
+                    todaySlotsCache = freshTodaySlots // keep cache in sync for next open
+                    updateTodayScheduleCard(freshTodaySlots) // keep banner count in sync too
+
+                    if (freshTodaySlots.isEmpty()) {
+                        showDialogEmpty(dialogBinding)
+                    } else {
+                        val grouped = groupBySchoolHospital(freshTodaySlots)
+                        todayAdapter.updateData(grouped)
+                        showDialogList(dialogBinding)
+                    }
+                } else {
+                    Log.e("HomeFragment_INFO", "Failed to fetch today's schedule")
+                    showDialogEmpty(dialogBinding)
+                }
+
+            } catch (e: Exception) {
+                Log.e("HomeFragment_INFO", "Error loading today's schedule dialog", e)
+                if (dialog.isShowing) showDialogEmpty(dialogBinding)
+            }
+        }
+    }
+
+    private fun expandSheet(binding: DialogTodayScheduleBinding, sheet: View) {
+        isSheetExpanded = true
+
+        val displayHeight = resources.displayMetrics.heightPixels
+        val startHeight = if (sheet.height > 0) sheet.height else collapsedSheetHeight
+
+        ValueAnimator.ofInt(startHeight, displayHeight).apply {
+            duration = 250
+            addUpdateListener { anim ->
+                sheet.layoutParams = sheet.layoutParams.apply {
+                    height = anim.animatedValue as Int
+                }
+            }
+            start()
+        }
+
+        sheet.animate().translationY(0f).setDuration(250).start()
+
+        // Let the list fill the newly available space
+        binding.todayScheduleList.layoutParams = binding.todayScheduleList.layoutParams.apply {
+            height = ViewGroup.LayoutParams.MATCH_PARENT
+        }
+    }
+
+    private fun collapseSheet(binding: DialogTodayScheduleBinding, sheet: View) {
+        isSheetExpanded = false
+
+        val startHeight = sheet.height
+
+        ValueAnimator.ofInt(startHeight, collapsedSheetHeight).apply {
+            duration = 250
+            addUpdateListener { anim ->
+                sheet.layoutParams = sheet.layoutParams.apply {
+                    height = anim.animatedValue as Int
+                }
+            }
+            start()
+        }
+
+        sheet.animate().translationY(0f).setDuration(250).start()
+
+        binding.todayScheduleList.layoutParams = binding.todayScheduleList.layoutParams.apply {
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+    }
+
+
+    private fun bindStatusBreakdownChart(data: DashboardSummary) {
+        val entries = listOf(
+            BarEntry(0f, data.pendingSchedule.toFloat()),
+            BarEntry(1f, data.confirmedSchedule.toFloat()),
+            BarEntry(2f, data.totalAttendances.toFloat())
+        )
+
+        val dataSet = BarDataSet(entries, "Status").apply {
+            colors = listOf(
+                resources.getColor(R.color.amber, null),
+                resources.getColor(R.color.accent_blue, null),
+                resources.getColor(R.color.primary, null)
+            )
+            valueTextSize = 12f
+        }
+
+        binding.statusBarChart.apply {
+            this.data = BarData(dataSet)
+            description.isEnabled = false
+            legend.isEnabled = false
+            xAxis.apply {
+                valueFormatter = com.github.mikephil.charting.formatter.IndexAxisValueFormatter(
+                    listOf("Pending", "Confirmed", "Attendance")
+                )
+                position = XAxis.XAxisPosition.BOTTOM
+                granularity = 1f
+                setDrawGridLines(false)
+            }
+            axisLeft.setDrawGridLines(false)
+            axisRight.isEnabled = false
+            animateY(600)
+            invalidate()
+        }
+    }
+
+    // Call this from processSlots(), after `slots` (the full-year, role-scoped, active list) is populated
+    private fun bindTrendChart(allSlots: List<VwSlot>) {
+        val monthCounts = IntArray(12)
+
+        allSlots.forEach { slot ->
+            try {
+                val date = LocalDate.parse(slot.dateSlot)
+                monthCounts[date.monthValue - 1]++
+            } catch (e: Exception) {
+                // skip unparsable dates
+            }
+        }
+
+        val entries = monthCounts.mapIndexed { index, count ->
+            Entry(index.toFloat(), count.toFloat())
+        }
+
+        val dataSet = LineDataSet(entries, "Slots").apply {
+            color = resources.getColor(R.color.primary, null)
+            setCircleColor(resources.getColor(R.color.primary, null))
+            lineWidth = 2f
+            circleRadius = 4f
+            setDrawValues(false)
+            mode = LineDataSet.Mode.CUBIC_BEZIER
+        }
+
+        binding.trendLineChart.apply {
+            this.data = LineData(dataSet)
+            description.isEnabled = false
+            legend.isEnabled = false
+            xAxis.apply {
+                valueFormatter = com.github.mikephil.charting.formatter.IndexAxisValueFormatter(
+                    listOf("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+                )
+                position = XAxis.XAxisPosition.BOTTOM
+                granularity = 1f
+                setDrawGridLines(false)
+            }
+            axisLeft.setDrawGridLines(false)
+            axisRight.isEnabled = false
+            animateX(600)
+            invalidate()
+        }
+    }
+
+    private fun showDialogLoading(binding: DialogTodayScheduleBinding) {
+        binding.progressLoading.visibility = View.VISIBLE
+        binding.todayScheduleList.visibility = View.GONE
+        binding.dialogEmptyState.visibility = View.GONE
+    }
+
+    private fun showDialogList(binding: DialogTodayScheduleBinding) {
+        binding.progressLoading.visibility = View.GONE
+        binding.todayScheduleList.visibility = View.VISIBLE
+        binding.dialogEmptyState.visibility = View.GONE
+    }
+
+    private fun showDialogEmpty(binding: DialogTodayScheduleBinding) {
+        binding.progressLoading.visibility = View.GONE
+        binding.todayScheduleList.visibility = View.GONE
+        binding.dialogEmptyState.visibility = View.VISIBLE
+    }
 
     private fun updateEmptyState(data: List<VwSlot>) {
         Log.d("HomeFragment_INFO", "data.isEmpty(): ${data.isEmpty()}")
