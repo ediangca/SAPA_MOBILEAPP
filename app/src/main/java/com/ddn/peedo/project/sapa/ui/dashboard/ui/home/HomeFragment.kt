@@ -157,6 +157,7 @@ class HomeFragment : Fragment() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     fun loadDashboard(user: VwUser) {
 
         lifecycleScope.launch {
@@ -182,6 +183,7 @@ class HomeFragment : Fragment() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     fun bindDashboard(data: DashboardSummary, user: VwUser) {
 
         with(binding) {

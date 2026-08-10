@@ -55,6 +55,10 @@ interface ApiService {
         @Path("username") username: String
     ): Response<VwUser>
 
+    @GET("Users/GetUserBySchoolID/{schoolID}")
+    suspend fun getStudentsBySchoolID(
+        @Path("schoolID") schoolID: String
+    ): Response<List<VwUser>>
     @POST("Users/resend-verification")
     suspend fun resendVerification(
         @Body email: String

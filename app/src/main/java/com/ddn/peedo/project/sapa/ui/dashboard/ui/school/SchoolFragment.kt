@@ -1,7 +1,7 @@
 package com.ddn.peedo.project.sapa.ui.dashboard.ui.school
 
-import android.R
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -16,12 +16,21 @@ import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModelProvider
 import com.ddn.peedo.project.sapa.databinding.FragmentSchoolBinding
 import com.ddn.peedo.project.sapa.model.School
-
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.adapter.SchoolAdapter
+import com.ddn.peedo.project.sapa.databinding.ItemSchoolStudentBinding
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import kotlinx.coroutines.launch
+import android.R
+import android.animation.ValueAnimator
+import android.view.MotionEvent
+import androidx.core.widget.addTextChangedListener
+import com.ddn.peedo.project.sapa.adapter.StudentAdapter
+import com.ddn.peedo.project.sapa.model.VwUser
+import com.ddn.peedo.project.sapa.ui.dashboard.ui.users.UserAdapter
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 
 
 class SchoolFragment : Fragment() {
@@ -43,6 +52,15 @@ class SchoolFragment : Fragment() {
 
     private var list: ArrayList<School> = ArrayList()
     private lateinit var adapter: SchoolAdapter
+
+    private var students: List<VwUser> = emptyList()
+    private lateinit var studentAdapter: UserAdapter
+
+    private var isSheetExpanded = false
+    private var collapsedSheetHeight = 0
+
+    private var currentSearchQuery: String = ""
+    private var searchDebounceJob: Job? = null
 
 
     override fun onCreateView(
@@ -66,6 +84,7 @@ class SchoolFragment : Fragment() {
         initComponent()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun initComponent() {
 
         var statusAdapter =
@@ -113,8 +132,11 @@ class SchoolFragment : Fragment() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun initRecycler() {
-        adapter = SchoolAdapter(emptyList())
+        adapter = SchoolAdapter(emptyList()) { school ->
+            showStudentsDialog(school)
+        }
         binding.list.layoutManager = LinearLayoutManager(requireContext())
         binding.list.adapter = adapter
     }
@@ -134,13 +156,15 @@ class SchoolFragment : Fragment() {
                     adapter.updateData(list)
                     Log.d(
                         "SchoolFragment_INFO",
-                        "Success: " + response.body() )
+                        "Success: " + response.body()
+                    )
                     updateEmptyState(list)
                 } else {
                     showEmptyState()
                     Log.d(
                         "SchoolFragment_INFO",
-                        "Error: " + response.message() )
+                        "Error: " + response.message()
+                    )
                     hideLoading()
                     binding.swipeRefresh.isRefreshing = false
                     showNoInternetState()
@@ -149,7 +173,8 @@ class SchoolFragment : Fragment() {
             } catch (e: Exception) {
                 Log.d(
                     "SchoolFragment_INFO",
-                    "Error: " + e.message )
+                    "Error: " + e.message
+                )
                 hideLoading()
                 binding.swipeRefresh.isRefreshing = false
                 showNoInternetState()
@@ -183,6 +208,206 @@ class SchoolFragment : Fragment() {
             2 -> "INACTIVE"
             3 -> "SUSPENDED"
             else -> "UNKNOWN"
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun showStudentsDialog(school: School) {
+        currentSearchQuery = ""
+        searchDebounceJob?.cancel()
+
+        val dialogBinding = ItemSchoolStudentBinding.inflate(layoutInflater)
+
+        val dialog =
+            Dialog(requireContext(), com.ddn.peedo.project.sapa.R.style.BottomDialogStyle).apply {
+                setContentView(dialogBinding.root)
+                setCancelable(true)
+                window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            }
+
+        val studentAdapter = StudentAdapter(
+            emptyList(),
+            requireContext(),
+            lifecycleOwner = viewLifecycleOwner
+        )
+
+        dialogBinding.studentList.layoutManager = LinearLayoutManager(requireContext())
+        dialogBinding.studentList.adapter = studentAdapter
+
+        // Reuse the header text field to show the school name instead of a date
+        dialogBinding.txtSchoolName.text = school.schoolName
+        dialogBinding.txtAddress.text = school.address
+
+        setupSearch(dialogBinding, studentAdapter)
+
+        var startY = 0f
+
+        dialogBinding.sheetContainer.post {
+            // Capture the sheet's natural wrap_content height once it's laid out,
+            // so we know what "collapsed" means when animating back down later
+            collapsedSheetHeight = dialogBinding.sheetContainer.height
+        }
+        dialogBinding.sheetContainer.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startY = event.rawY
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = event.rawY - startY
+                    // Only follow the finger for downward drags (dismiss/collapse gesture).
+                    // Upward drags are handled as a discrete expand action on release,
+                    // not a live-follow, since expanding requires a height change, not just translation.
+                    if (delta > 0) {
+                        v.translationY = delta
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val delta = event.rawY - startY
+                    when {
+                        // Dragged up past threshold -> expand to full screen
+                        !isSheetExpanded && delta < -80 -> {
+                            expandSheet(dialogBinding, v)
+                        }
+                        // Dragged down far enough -> collapse (if expanded) or dismiss (if already collapsed)
+                        delta > v.height / 4 -> {
+                            if (isSheetExpanded) {
+                                collapseSheet(dialogBinding, v)
+                            } else {
+                                dialog.dismiss()
+                            }
+                        }
+                        // Not far enough either direction -> snap back to current state
+                        else -> {
+                            v.animate().translationY(0f).setDuration(200).start()
+                        }
+                    }
+                    true
+                }
+
+                else -> false
+            }
+        }
+
+        dialogBinding.btnClose.setOnClickListener { dialog.dismiss() }
+
+        dialog.show()
+        showDialogLoading(dialogBinding)
+
+        lifecycleScope.launch {
+            try {
+                val api = RetrofitClient.api(requireContext())
+
+                val schoolID = school.schoolID
+                if (schoolID.isNullOrEmpty()) {
+                    showDialogEmpty(dialogBinding)
+                    return@launch
+                }
+
+                val response = api.getStudentsBySchoolID(school.schoolID!!)
+
+                if (!dialog.isShowing) return@launch
+
+                if (response.isSuccessful && response.body() != null) {
+                    students = response.body()!!
+                    if (students.isEmpty()) {
+                        showDialogEmpty(dialogBinding)
+                    } else {
+                        studentAdapter.updateData(students)
+                        showDialogList(dialogBinding)
+                    }
+                } else {
+                    Log.e(
+                        "SchoolFragment_INFO",
+                        "Failed to fetch students for school ${school.schoolID}"
+                    )
+                    showDialogEmpty(dialogBinding)
+                }
+            } catch (e: Exception) {
+                Log.e("SchoolFragment_INFO", "Error loading students dialog", e)
+                if (dialog.isShowing) showDialogEmpty(dialogBinding)
+            }
+        }
+    }
+
+    private fun setupSearch(binding: ItemSchoolStudentBinding, studentAdapter: StudentAdapter) {
+        binding.etSearch.addTextChangedListener { editable ->
+            searchDebounceJob?.cancel()
+            searchDebounceJob = lifecycleScope.launch {
+                delay(300)
+                currentSearchQuery = editable?.toString().orEmpty().trim()
+                applyFilters(binding)
+            }
+        }
+    }
+
+
+    private fun applyFilters(binding: ItemSchoolStudentBinding) {
+        var filtered = students
+
+        if (currentSearchQuery.isNotEmpty()) {
+            filtered = filtered.filter {
+                it.fullname.contains(currentSearchQuery, ignoreCase = true)
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            showDialogEmpty(binding,
+                if (currentSearchQuery.isNotEmpty()) "No student found matching \"$currentSearchQuery\""
+                else "No students found"
+            )
+        } else {
+            showDialogList(binding)
+            studentAdapter.submitList(filtered)
+        }
+    }
+
+    private fun expandSheet(binding: ItemSchoolStudentBinding, sheet: View) {
+        isSheetExpanded = true
+
+        val displayHeight = resources.displayMetrics.heightPixels
+        val startHeight = if (sheet.height > 0) sheet.height else collapsedSheetHeight
+
+        ValueAnimator.ofInt(startHeight, displayHeight).apply {
+            duration = 250
+            addUpdateListener { anim ->
+                sheet.layoutParams = sheet.layoutParams.apply {
+                    height = anim.animatedValue as Int
+                }
+            }
+            start()
+        }
+
+        sheet.animate().translationY(0f).setDuration(250).start()
+
+        // Let the list fill the newly available space
+        binding.studentList.layoutParams = binding.studentList.layoutParams.apply {
+            height = ViewGroup.LayoutParams.MATCH_PARENT
+        }
+    }
+
+    private fun collapseSheet(binding: ItemSchoolStudentBinding, sheet: View) {
+        isSheetExpanded = false
+
+        val startHeight = sheet.height
+
+        ValueAnimator.ofInt(startHeight, collapsedSheetHeight).apply {
+            duration = 250
+            addUpdateListener { anim ->
+                sheet.layoutParams = sheet.layoutParams.apply {
+                    height = anim.animatedValue as Int
+                }
+            }
+            start()
+        }
+
+        sheet.animate().translationY(0f).setDuration(250).start()
+
+        binding.studentList.layoutParams = binding.studentList.layoutParams.apply {
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
     }
 
@@ -243,6 +468,30 @@ class SchoolFragment : Fragment() {
         }
     }
 
+
+    private fun showDialogLoading(binding: ItemSchoolStudentBinding) {
+        binding.progressLoading.visibility = View.VISIBLE
+        binding.studentList.visibility = View.GONE
+        binding.dialogEmptyState.visibility = View.GONE
+    }
+
+    private fun showDialogList(binding: ItemSchoolStudentBinding) {
+        binding.progressLoading.visibility = View.GONE
+        binding.studentList.visibility = View.VISIBLE
+        binding.dialogEmptyState.visibility = View.GONE
+    }
+
+    private fun showDialogEmpty(binding: ItemSchoolStudentBinding, message: String? = null) {
+        binding.progressLoading.visibility = View.GONE
+        binding.studentList.visibility = View.GONE
+        binding.dialogEmptyState.visibility = View.VISIBLE
+
+        binding.emptyStateMessage.text = if (message.isNullOrEmpty()) {
+            "No student found."
+        } else {
+            message
+        }
+    }
 
 
 }

@@ -52,6 +52,12 @@
     <color name="status_pending_bg">#1A4A9FFF</color>
     <color name="status_approved_bg">#1A00C48C</color>
 
+    <color name="status_approved">#0B1929</color>
+    <color name="status_pending">#FFC107</color>
+    <color name="status_inactive">#FF424242</color>
+    <color name="status_suspended">#FF4D4F</color>
+    <color name="status_unknown">#AEFFFFFF</color>
+
     <!-- Primary/Secondary (for your existing theme) -->
     <color name="primary_text">#4A9FFF</color>
     <color name="secondary_text">#8B92A0</color>

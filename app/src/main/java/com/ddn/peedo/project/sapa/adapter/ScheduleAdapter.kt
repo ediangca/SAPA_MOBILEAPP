@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.media.SoundPool
 import android.os.Build
@@ -21,24 +20,19 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.databinding.ItemScheduleBinding
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
 import com.ddn.peedo.project.sapa.model.VwSlot
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.ddn.peedo.project.sapa.R
-import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.transition.Visibility
 import com.ddn.peedo.project.sapa.databinding.DialogDepartmentShiftsBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
 import com.ddn.peedo.project.sapa.databinding.DialogStudentsBinding
@@ -559,7 +553,7 @@ class ScheduleAdapter(
             )
         }
 
-        val adapter = StudentAdapter(emptyList(), context, lifecycleOwner)
+        val adapter = StudentAppointedAdapter(emptyList(), context, lifecycleOwner)
         binding.studentRecycler.layoutManager = LinearLayoutManager(context)
         binding.studentRecycler.adapter = adapter
 
