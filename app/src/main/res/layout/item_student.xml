@@ -13,7 +13,7 @@
         android:textColor="@color/primary"
         android:textSize="14sp"
         android:textStyle="bold"
-        app:layout_constraintEnd_toStartOf="@id/attendance"
+        app:layout_constraintEnd_toStartOf="@+id/txtStatus"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -24,7 +24,7 @@
         android:text="student@email.com"
         android:textColor="@color/secondary"
         android:textSize="12sp"
-        app:layout_constraintEnd_toStartOf="@id/attendance"
+        app:layout_constraintEnd_toStartOf="@+id/txtStatus"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/txtStudentName" />
 
@@ -52,8 +52,9 @@
         android:textColor="@color/white"
         android:textSize="10sp"
         android:textStyle="bold"
-        android:visibility="gone"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/txtStudentEmail" />
+        android:visibility="visible"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

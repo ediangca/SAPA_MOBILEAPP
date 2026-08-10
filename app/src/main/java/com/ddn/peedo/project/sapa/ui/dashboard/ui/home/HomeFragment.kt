@@ -400,6 +400,11 @@ class HomeFragment : Fragment() {
 
         dialogBinding.txtDate.text =  LocalDate.now().format(dateFormatter)
 
+
+        binding.swipeRefresh.setOnRefreshListener {
+
+        }
+
         // Wire the drag-to-dismiss + close button first so the dialog is
         // interactive immediately, even while data is still loading
         var startY = 0f
@@ -639,19 +644,19 @@ class HomeFragment : Fragment() {
     }
 
     private fun showDialogLoading(binding: DialogTodayScheduleBinding) {
-        binding.progressLoading.visibility = View.VISIBLE
+        binding.loadingState.visibility = View.VISIBLE
         binding.todayScheduleList.visibility = View.GONE
         binding.dialogEmptyState.visibility = View.GONE
     }
 
     private fun showDialogList(binding: DialogTodayScheduleBinding) {
-        binding.progressLoading.visibility = View.GONE
+        binding.loadingState.visibility = View.GONE
         binding.todayScheduleList.visibility = View.VISIBLE
         binding.dialogEmptyState.visibility = View.GONE
     }
 
     private fun showDialogEmpty(binding: DialogTodayScheduleBinding) {
-        binding.progressLoading.visibility = View.GONE
+        binding.loadingState.visibility = View.GONE
         binding.todayScheduleList.visibility = View.GONE
         binding.dialogEmptyState.visibility = View.VISIBLE
     }

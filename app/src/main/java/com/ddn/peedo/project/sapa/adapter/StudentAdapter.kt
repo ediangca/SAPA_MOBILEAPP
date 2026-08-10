@@ -3,6 +3,7 @@ package com.ddn.peedo.project.sapa.adapter
 import android.content.Context
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -41,6 +42,7 @@ class StudentAdapter(
             txtStudentEmail.text = student.email
 
             txtStatus.text = mapStatus(student.status)
+            txtStatus.visibility = View.VISIBLE
             txtStatus.backgroundTintList =
                 ContextCompat.getColorStateList(context, statusColor(student.status))
 
@@ -62,9 +64,10 @@ class StudentAdapter(
     private fun statusColor(status: Char?): Int {
         return when (status) {
             'A' -> R.color.status_approved
-            'P' -> R.color.status_pending_bg
+            'P' -> R.color.status_pending
             'I' -> R.color.status_inactive
             'S' -> R.color.status_suspended
+            'U' -> R.color.status_unverified
             else -> R.color.status_unknown
         }
     }

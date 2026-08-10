@@ -56,7 +56,8 @@
     <color name="status_pending">#FFC107</color>
     <color name="status_inactive">#FF424242</color>
     <color name="status_suspended">#FF4D4F</color>
-    <color name="status_unknown">#AEFFFFFF</color>
+    <color name="status_unverified">#000000</color>
+    <color name="status_unknown">#AE1A1919</color>
 
     <!-- Primary/Secondary (for your existing theme) -->
     <color name="primary_text">#4A9FFF</color>

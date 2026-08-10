@@ -28,7 +28,6 @@ import android.view.MotionEvent
 import androidx.core.widget.addTextChangedListener
 import com.ddn.peedo.project.sapa.adapter.StudentAdapter
 import com.ddn.peedo.project.sapa.model.VwUser
-import com.ddn.peedo.project.sapa.ui.dashboard.ui.users.UserAdapter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 
@@ -53,8 +52,11 @@ class SchoolFragment : Fragment() {
     private var list: ArrayList<School> = ArrayList()
     private lateinit var adapter: SchoolAdapter
 
-    private var students: List<VwUser> = emptyList()
-    private lateinit var studentAdapter: UserAdapter
+    // Full (unfiltered) student list for the currently open dialog.
+    // Populated after a successful fetch in showStudentsDialog(); applyFilters()
+    // filters against this, never against the adapter's current (possibly already
+    // filtered) list.
+    private var currentSchoolStudents: List<VwUser> = emptyList()
 
     private var isSheetExpanded = false
     private var collapsedSheetHeight = 0
@@ -214,6 +216,7 @@ class SchoolFragment : Fragment() {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun showStudentsDialog(school: School) {
         currentSearchQuery = ""
+        currentSchoolStudents = emptyList()
         searchDebounceJob?.cancel()
 
         val dialogBinding = ItemSchoolStudentBinding.inflate(layoutInflater)
@@ -237,6 +240,7 @@ class SchoolFragment : Fragment() {
         // Reuse the header text field to show the school name instead of a date
         dialogBinding.txtSchoolName.text = school.schoolName
         dialogBinding.txtAddress.text = school.address
+        dialogBinding.etSearch.setText("")
 
         setupSearch(dialogBinding, studentAdapter)
 
@@ -307,16 +311,18 @@ class SchoolFragment : Fragment() {
                     return@launch
                 }
 
-                val response = api.getStudentsBySchoolID(school.schoolID!!)
+                val response = api.getStudentsBySchoolID(schoolID)
 
                 if (!dialog.isShowing) return@launch
 
                 if (response.isSuccessful && response.body() != null) {
-                    students = response.body()!!
-                    if (students.isEmpty()) {
+                    val fetchedStudents = response.body()!!
+                    currentSchoolStudents = fetchedStudents
+
+                    if (fetchedStudents.isEmpty()) {
                         showDialogEmpty(dialogBinding)
                     } else {
-                        studentAdapter.updateData(students)
+                        studentAdapter.updateData(fetchedStudents)
                         showDialogList(dialogBinding)
                     }
                 } else {
@@ -339,14 +345,14 @@ class SchoolFragment : Fragment() {
             searchDebounceJob = lifecycleScope.launch {
                 delay(300)
                 currentSearchQuery = editable?.toString().orEmpty().trim()
-                applyFilters(binding)
+                applyFilters(binding, studentAdapter)
             }
         }
     }
 
 
-    private fun applyFilters(binding: ItemSchoolStudentBinding) {
-        var filtered = students
+    private fun applyFilters(binding: ItemSchoolStudentBinding, studentAdapter: StudentAdapter) {
+        var filtered = currentSchoolStudents
 
         if (currentSearchQuery.isNotEmpty()) {
             filtered = filtered.filter {
@@ -355,13 +361,14 @@ class SchoolFragment : Fragment() {
         }
 
         if (filtered.isEmpty()) {
-            showDialogEmpty(binding,
+            showDialogEmpty(
+                binding,
                 if (currentSearchQuery.isNotEmpty()) "No student found matching \"$currentSearchQuery\""
                 else "No students found"
             )
         } else {
             showDialogList(binding)
-            studentAdapter.submitList(filtered)
+            studentAdapter.updateData(filtered)
         }
     }
 
