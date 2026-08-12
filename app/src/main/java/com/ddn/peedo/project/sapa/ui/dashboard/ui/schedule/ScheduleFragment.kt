@@ -28,6 +28,8 @@ import android.view.MotionEvent
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.R
+import com.ddn.peedo.project.sapa.data.repository.SlotRepository
+import com.ddn.peedo.project.sapa.data.repository.SlotResult
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.store.SessionManager
@@ -466,76 +468,50 @@ class ScheduleFragment : Fragment() {
         showLoading()
         lifecycleScope.launch {
 
-            try {
+            val repo = SlotRepository(requireContext())
+            val year = LocalDate.now().year
 
-                val api = RetrofitClient.api(requireContext())
-                val year = LocalDate.now().year
+            val result = repo.getSlots(
+                roleID = user.roleID,
+                userID = user.userID,
+                hospitalID = user.hospitalID,
+                year = year
+            )
 
-                Log.d("HomeFragment_INFO", "Fetching slots for role: ${user.roleID}")
+            hideLoading()
+            binding.swipeRefresh.isRefreshing = false
+            list.clear()
 
-                val response = when (user.roleID) {
-
-                    // ADMIN / SUPERVISOR
-                    "UGR0001", "UGR0002" -> {
-                        Log.d("ScheduleFragment_INFO", "Admin / Supervisor")
-                        api.getSlots(year)
-                    }
-
-                    // SCHOOL COORDINATOR
-                    "UGR0003" -> {
-                        Log.d("ScheduleFragment_INFO", "Student")
-                        api.getSlotsByUserID(user.userID, year)
-                    }
-
-                    // SUPERVISOR
-                    "UGR0006" -> {
-                        Log.d("ScheduleFragment_INFO", "Hospital")
-                        api.getSlotsByCI(user.userID ?: "", year)
-                    }
-
-                    // STUDENT
-                    "UGR0004" -> {
-                        Log.d("ScheduleFragment_INFO", "Appointed User")
-                        api.getSlotsByAppointUserID(user.userID, year)
-                    }
-
-                    // SUPERVISOR
-                    "UGR0005" -> {
-                        Log.d("ScheduleFragment_INFO", "Hospital")
-                        api.getSlotsByHospitalID(user.hospitalID ?: "", year)
-                    }
-
-                    else -> {
-                        Log.e("ScheduleFragment_INFO", "Unknown role")
-                        return@launch
-                    }
-                }
-
-
-//                val response = RetrofitClient.create(requireContext()).getSchedule()
-
-                hideLoading()
-                binding.swipeRefresh.isRefreshing = false
-                list.clear()
-
-                Log.d("ScheduleFragment_INFO", "Schedule response: $response")
-
-                if (response.isSuccessful) {
-                    list.addAll(response.body().orEmpty())
-
+            when (result) {
+                is SlotResult.FromServer -> {
+                    binding.offlineBanner.visibility = View.GONE
+                    list.addAll(result.slots)
                     updateCalendar(list)
                     applyCombinedFilter()
-                } else {
+                }
+                is SlotResult.FromCache -> {
+                    binding.offlineBanner.visibility = View.VISIBLE
+                    val syncedText = result.lastSyncedAt?.let {
+                        val sdf = java.text.SimpleDateFormat("MMM dd, h:mm a", Locale.ENGLISH)
+                        "Offline — showing data synced ${sdf.format(java.util.Date(it))}"
+                    } ?: "Offline — showing cached data"
+                    binding.offlineBannerText.text = syncedText
+
+                    binding.btnSyncNow.setOnClickListener {
+                        loadSchedule(user) // re-attempt; will hit server if connection returns
+                    }
+
+                    list.addAll(result.slots)
+                    updateCalendar(list)
+                    applyCombinedFilter()
+                }
+                is SlotResult.EmptyNoConnection -> {
+                    binding.offlineBanner.visibility = View.GONE
                     showNoInternetState()
                 }
-
-            } catch (e: Exception) {
-                hideLoading()
-                showNoInternetState()
             }
         }
     }
-
     private fun mapStatus(status: Int?): String {
         return when (status) {
             0 -> "PENDING"
