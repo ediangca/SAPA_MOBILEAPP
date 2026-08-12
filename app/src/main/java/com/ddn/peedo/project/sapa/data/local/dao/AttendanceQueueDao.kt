@@ -17,6 +17,18 @@ interface AttendanceQueueDao {
     @Query("SELECT * FROM attendance_queue WHERE slotID = :slotId AND userID = :userId LIMIT 1")
     suspend fun findExisting(slotId: String, userId: String): AttendanceQueueEntity?
 
+    @Query(""" SELECT EXISTS(
+        SELECT 1
+        FROM attendance_queue
+        WHERE slotID = :slotId
+        AND userID = :userId
+        AND status = 1
+    )
+""")
+    suspend fun hasAttendance(
+        slotId: String,
+        userId: String
+    ): Boolean
     @Update
     suspend fun update(entry: AttendanceQueueEntity)
 

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.Gravity
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
@@ -20,8 +19,6 @@ import com.ddn.peedo.project.sapa.adapter.ScheduleAdapter
 import com.ddn.peedo.project.sapa.databinding.FragmentScheduleBinding
 import com.ddn.peedo.project.sapa.dataclass.CalendarDay
 import com.ddn.peedo.project.sapa.model.VwSlot
-import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -36,7 +33,15 @@ import com.ddn.peedo.project.sapa.store.SessionManager
 import com.google.gson.Gson
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.local.entity.AttendanceEntity
+import com.ddn.peedo.project.sapa.data.repository.AttendanceRepository
+import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
 
 class ScheduleFragment : Fragment() {
 
@@ -465,49 +470,332 @@ class ScheduleFragment : Fragment() {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun loadSchedule(user: VwUser) {
+
         showLoading()
+
         lifecycleScope.launch {
 
-            val repo = SlotRepository(requireContext())
-            val year = LocalDate.now().year
+            try {
 
-            val result = repo.getSlots(
-                roleID = user.roleID,
-                userID = user.userID,
-                hospitalID = user.hospitalID,
-                year = year
-            )
+                val repo =
+                    SlotRepository(requireContext())
 
-            hideLoading()
-            binding.swipeRefresh.isRefreshing = false
-            list.clear()
+                val year =
+                    LocalDate.now().year
 
-            when (result) {
-                is SlotResult.FromServer -> {
-                    binding.offlineBanner.visibility = View.GONE
-                    list.addAll(result.slots)
-                    updateCalendar(list)
-                    applyCombinedFilter()
-                }
-                is SlotResult.FromCache -> {
-                    binding.offlineBanner.visibility = View.VISIBLE
-                    val syncedText = result.lastSyncedAt?.let {
-                        val sdf = java.text.SimpleDateFormat("MMM dd, h:mm a", Locale.ENGLISH)
-                        "Offline — showing data synced ${sdf.format(java.util.Date(it))}"
-                    } ?: "Offline — showing cached data"
-                    binding.offlineBannerText.text = syncedText
+                val result =
+                    repo.getSlots(
+                        roleID = user.roleID,
+                        userID = user.userID,
+                        hospitalID = user.hospitalID,
+                        year = year
+                    )
 
-                    binding.btnSyncNow.setOnClickListener {
-                        loadSchedule(user) // re-attempt; will hit server if connection returns
+                hideLoading()
+
+                binding.swipeRefresh.isRefreshing = false
+
+                list.clear()
+
+                when (result) {
+
+                    // =====================================================
+                    // ONLINE
+                    // =====================================================
+
+                    is SlotResult.FromServer -> {
+
+                        binding.offlineBanner.visibility =
+                            View.GONE
+
+                        list.addAll(
+                            result.slots
+                        )
+
+
+
+                        updateCalendar(
+                            list
+                        )
+
+                        applyCombinedFilter()
+
+
+                        // ---------------------------------------------
+                        // IMPORTANT
+                        // Only ONE API request.
+                        // ---------------------------------------------
+
+                        val relevantSlots =
+                            getRelevantSlotsForAttendance(result.slots)
+
+                        val attendanceRepository =
+                            AttendanceRepository(requireContext())
+
+                        Log.d(
+                            "AttendanceSync",
+                            "Total slots: ${result.slots.size}"
+                        )
+
+                        Log.d(
+                            "AttendanceSync",
+                            "Relevant slots: ${relevantSlots.size}"
+                        )
+
+                        lifecycleScope.launch {
+
+//                        Synchronize ALL attendance here.
+//                        syncAttendance(result.slots)
+
+                        syncAttendance(relevantSlots)
+
+//                         For Large Data
+//                         val success = attendanceRepository.sync()
+//                         Log.d("AttendanceSync","Background sync result: $success")
+
+                        }
+
                     }
 
-                    list.addAll(result.slots)
-                    updateCalendar(list)
-                    applyCombinedFilter()
+                    // =====================================================
+                    // OFFLINE
+                    // =====================================================
+
+                    is SlotResult.FromCache -> {
+
+                        binding.offlineBanner.visibility =
+                            View.VISIBLE
+
+                        val syncedText =
+                            result.lastSyncedAt?.let {
+
+                                val sdf =
+                                    SimpleDateFormat(
+                                        "MMM dd, h:mm a",
+                                        Locale.ENGLISH
+                                    )
+
+                                "Offline — showing data synced ${
+                                    sdf.format(
+                                        Date(it)
+                                    )
+                                }"
+
+                            } ?: "Offline — showing cached data"
+
+                        binding.offlineBannerText.text =
+                            syncedText
+
+                        binding.btnSyncNow.setOnClickListener {
+                            loadSchedule(user)
+                        }
+
+                        list.addAll(
+                            result.slots
+                        )
+
+                        // ---------------------------------------------
+                        // DO NOT call API here.
+                        //
+                        // AttendanceEntity already contains
+                        // the last synchronized attendance.
+                        // ---------------------------------------------
+
+                        updateCalendar(
+                            list
+                        )
+
+                        applyCombinedFilter()
+                    }
+
+                    // =====================================================
+                    // NOTHING CACHED
+                    // =====================================================
+
+                    is SlotResult.EmptyNoConnection -> {
+
+                        binding.offlineBanner.visibility =
+                            View.GONE
+
+                        showNoInternetState()
+                    }
                 }
-                is SlotResult.EmptyNoConnection -> {
-                    binding.offlineBanner.visibility = View.GONE
-                    showNoInternetState()
+
+            } catch (e: Exception) {
+
+                Log.e(
+                    "ScheduleFragment",
+                    "Error loading schedule",
+                    e
+                )
+
+                hideLoading()
+
+                binding.swipeRefresh.isRefreshing =
+                    false
+            }
+        }
+    }
+
+    private suspend fun syncAttendance(
+        slots: List<VwSlot>
+    ) {
+
+        if (slots.isEmpty()) {
+            Log.d(
+                "AttendanceSync",
+                "No schedules available for attendance sync."
+            )
+            return
+        }
+
+        try {
+
+            val slotIds =
+                slots
+                    .map { it.slotID }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+            if (slotIds.isEmpty()) {
+                return
+            }
+
+            Log.d(
+                "AttendanceSync",
+                "Syncing attendance for ${slotIds.size} slots"
+            )
+
+            val api =
+                RetrofitClient
+                    .create(requireContext())
+
+            val response =
+                api.getAttendanceBySlots(slotIds)
+
+            if (!response.isSuccessful) {
+
+                Log.e(
+                    "AttendanceSync",
+                    "API failed: ${response.code()}"
+                )
+
+                return
+            }
+
+            val serverAttendance =
+                response.body().orEmpty()
+
+            Log.d(
+                "AttendanceSync",
+                "Server returned ${serverAttendance.size} attendance records"
+            )
+
+            val entities =
+                serverAttendance.mapNotNull { attendance ->
+
+                    if (attendance.attID.isNullOrBlank()) {
+
+                        Log.e(
+                            "AttendanceSync",
+                            "Skipping attendance record with null/empty ATTID"
+                        )
+
+                        null
+
+                    } else {
+
+                        AttendanceEntity(
+                            attID =
+                                attendance.attID,
+
+                            slotID =
+                                attendance.slotID,
+
+                            userID =
+                                attendance.userID,
+
+                            status =
+                                attendance.status,
+
+                            dateCreated =
+                                attendance.dateCreated,
+
+                            dateUpdated =
+                                attendance.dateUpdated
+                        )
+                    }
+                }
+
+            val attendanceDao =
+                SapaDatabase
+                    .getInstance(requireContext())
+                    .attendanceDao()
+
+            withContext(Dispatchers.IO) {
+
+                if (entities.isNotEmpty()) {
+
+                    attendanceDao.upsertAll(
+                        entities
+                    )
+                }
+            }
+
+            Log.d(
+                "AttendanceSync",
+                "Successfully cached ${entities.size} attendance records"
+            )
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "AttendanceSync",
+                "Failed to synchronize attendance",
+                e
+            )
+
+            // Do NOT clear the existing Room attendance.
+            //
+            // The previous synchronized data remains available
+            // for offline use.
+        }
+    }
+
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun getRelevantSlotsForAttendance(
+        slots: List<VwSlot>
+    ): List<VwSlot> {
+
+        val today = LocalDate.now()
+
+        val fromDate = today.minusDays(7)
+        val toDate = today.plusDays(30)
+
+        return slots.filter { slot ->
+
+            val dateString = slot.dateSlot
+
+            if (dateString.isNullOrBlank()) {
+                false
+            } else {
+                try {
+
+                    val slotDate =
+                        LocalDate.parse(dateString)
+
+                    slotDate in fromDate..toDate
+
+                } catch (e: Exception) {
+
+                    Log.e(
+                        "AttendanceSync",
+                        "Invalid slot date: $dateString",
+                        e
+                    )
+
+                    false
                 }
             }
         }

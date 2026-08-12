@@ -1,8 +1,8 @@
 package com.ddn.peedo.project.sapa.services
 
 import com.ddn.peedo.project.sapa.dataclass.AttendanceRequest
-import com.ddn.peedo.project.sapa.dataclass.AttendanceResponse
 import com.ddn.peedo.project.sapa.dataclass.AttendanceValidationResponse
+import com.ddn.peedo.project.sapa.model.AttendanceResponse
 import com.ddn.peedo.project.sapa.model.AuthRequest
 import com.ddn.peedo.project.sapa.model.AuthResponse
 import com.ddn.peedo.project.sapa.model.DashboardSummary
@@ -126,11 +126,21 @@ interface ApiService {
 
     //-----------------Attendance-----------------//
 
+    @POST("Attendance/by-slots")
+    suspend fun getAttendanceBySlots(
+        @Body slotIDs: List<String>
+    ): Response<List<AttendanceResponse>>
+
     @GET("Attendance/user/{userId}/slot/{slotId}")
     suspend fun validateAttendance(
         @Path("userId") userId: String,
         @Path("slotId") slotId: String
     ): Response<AttendanceValidationResponse>
+
+    @GET("Attendance/sync")
+    suspend fun syncAttendance(
+        @Query("since") since: String?
+    ): Response<List<AttendanceResponse>>
 
     @POST("Attendance")
     suspend fun postAttendance(
