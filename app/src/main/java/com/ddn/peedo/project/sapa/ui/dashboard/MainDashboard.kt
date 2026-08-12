@@ -24,6 +24,7 @@ import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.adapter.RecentScheduleAdapter
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
 import com.ddn.peedo.project.sapa.databinding.ActivityMainDashboardBinding
 import com.ddn.peedo.project.sapa.databinding.DialogAboutAppBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
@@ -70,10 +71,19 @@ class MainDashboard : AppCompatActivity() {
 
         onInit()
 
+        // TEMP: verify local DB creation — remove after confirming
+        lifecycleScope.launch {
+            val db = SapaDatabase.getInstance(this@MainDashboard)
+            val userCount = db.userDao().getAllOnce().size
+            Log.d("SapaDatabase", "DB ready. Users cached: $userCount")
+            Log.d("SapaDatabase", "DB file path: ${getDatabasePath("sapa_local.db").absolutePath}")
+        }
+
 
         val session = SessionManager(this)
 
         lifecycleScope.launch {
+
             val userJson = session.getUser()
 
             if (userJson != null) {

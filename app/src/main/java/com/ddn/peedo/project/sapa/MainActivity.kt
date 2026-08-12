@@ -8,18 +8,14 @@ import androidx.appcompat.app.AppCompatActivity
 import com.ddn.peedo.project.sapa.databinding.ActivityMainBinding
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.SoundPool
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.RecyclerView
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.ui.dashboard.MainDashboard
@@ -27,12 +23,17 @@ import com.ddn.peedo.project.sapa.utils.JwtUtils
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.provider.Settings
+import com.ddn.peedo.project.sapa.utils.ConnectivityUtils
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private var hasRouted = false   // 🔒 prevents rerun
-    private lateinit var recyclerView: RecyclerView
+
+    // How long a session stays usable OFFLINE after its JWT technically expires.
+    // Tune this to your rotation schedule realities — e.g. a week covers most
+    // hospital placements without forcing daily reconnects.
+    private val OFFLINE_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,34 +41,76 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Room creates the DB file lazily on first touch — this line alone
+        // guarantees "create if not exists" with zero extra branching needed.
+        lifecycleScope.launch {
+            val db = SapaDatabase.getInstance(this@MainActivity)
+            val userCount = db.userDao().getAllOnce().size
+            Log.d("SapaDatabase", "Local DB ready. Cached users: $userCount")
+        }
     }
 
     override fun onStart() {
         super.onStart()
 
-        if (!isNetworkAvailable(this)) {
-            Log.d("MainActivity_INFO", "NO NETWORK AVAILABLE")
-
-            SweetAlertUtil.showConfirm(
-                this,
-                "INTERNET CONNECTIVITY REQUIRED",
-                "Please turn on your Wi-Fi or mobile data to use this app.",
-                confirmText = "Retry",
-                cancelText = "Settings",
-                onConfirm = {
-                    // IF user taps "Retry"
-                    recreate()
-                },
-                onCancel = {
-                    // IF user taps "Settings"
-                    startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
-                }
-            )
-
-            return
-        } else {
-            checkApiAndProceed()
+        lifecycleScope.launch {
+            if (!ConnectivityUtils.isNetworkAvailable(this@MainActivity)) {
+                Log.d("MainActivity_INFO", "NO NETWORK AVAILABLE — checking local session")
+                handleOfflineEntry()
+            } else {
+                checkApiAndProceed()
+            }
         }
+    }
+
+    /**
+     * Decides what to do when there's no network:
+     * - Valid or grace-period session cached → let them into the dashboard.
+     * - Nothing usable cached → tell them to connect for first-time setup.
+     */
+    private suspend fun handleOfflineEntry() {
+        val session = SessionManager(this@MainActivity)
+        val token = session.getToken()
+
+        if (token.isNullOrEmpty()) {
+            showConnectRequiredAlert(
+                "No account found on this device. Please connect to the " +
+                        "internet to log in for the first time."
+            )
+            return
+        }
+
+        val isExpired = JwtUtils.isTokenExpired(token)
+        val withinGracePeriod = isExpired &&
+                JwtUtils.getExpiryMillis(token)?.let {
+                    (System.currentTimeMillis() - it) < OFFLINE_GRACE_PERIOD_MS
+                } == true
+
+        if (!isExpired || withinGracePeriod) {
+            Toast.makeText(
+                this@MainActivity,
+                "You're offline — showing cached data",
+                Toast.LENGTH_SHORT
+            ).show()
+            goToDashboard()
+        } else {
+            showConnectRequiredAlert(
+                "Your session has expired and you've been offline too long. " +
+                        "Please connect to the internet to log in again."
+            )
+        }
+    }
+
+    private fun showConnectRequiredAlert(message: String) {
+        SweetAlertUtil.showConfirm(
+            this@MainActivity,
+            "INTERNET CONNECTIVITY REQUIRED",
+            message,
+            confirmText = "Retry",
+            cancelText = "Settings",
+            onConfirm = { recreate() },
+            onCancel = { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
+        )
     }
 
     private fun isNetworkAvailable(context: Context?): Boolean {
@@ -78,103 +121,46 @@ class MainActivity : AppCompatActivity() {
             val capabilities =
                 connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
             if (capabilities != null) {
-                when {
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
-                        return true
-                    }
-
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
-                        return true
-                    }
-
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> {
-                        return true
-                    }
-                }
+                return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
             }
         } else {
             val activeNetworkInfo = connectivityManager.activeNetworkInfo
-            if (activeNetworkInfo != null && activeNetworkInfo.isConnected) {
-                return true
-            }
+            return activeNetworkInfo != null && activeNetworkInfo.isConnected
         }
         return false
     }
 
     private fun checkApiAndProceed() {
-
-//        val loadingDialog = SweetAlertUtil.showLoading(
-//            this,
-//            "Checking Server",
-//            "Connecting to SAPA API..."
-//        )
-
         showLoading()
-
         lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api(this@MainActivity).getSAPAInformation(1)
-
-
-//                loadingDialog.dismissWithAnimation()
-
                 if (response.isSuccessful && response.body() != null) {
-                    val info = response.body()!!
-                    val rawJson = response.errorBody()?.string()
-                        ?: response.body().toString()
-
-                    Log.d("MainActivity_INFO", "Response ${response}")
-                    Log.d("MainActivity_INFO", "Information ${info.toString()}")
-                    Log.d("MainActivity_INFO", "ErrorBody ${rawJson}")
-//                    SweetAlertUtil.showSuccess(
-//                        this@MainActivity,
-//                        "Success",
-//                        "Server Connected!"
-//                    ) {
-//                    }
-
-
                     checkAuthState()
                 } else {
                     SweetAlertUtil.showError(
-                        this@MainActivity,
-                        "Error",
+                        this@MainActivity, "Error",
                         "Server returned an error \n Please contact System Administrator"
                     )
                 }
-
             } catch (e: Exception) {
-//                loadingDialog.dismissWithAnimation()
                 Log.d("MainActivity_INFO", "checkApiAndProceed: ${e.message}")
-
-                Toast.makeText(
-                    this@MainActivity,
-                    "Unable to connect to server",
-                    Toast.LENGTH_LONG
-                ).show()
-                SweetAlertUtil.showError(
-                    this@MainActivity,
-                    "Connection Failed",
-                    "Unable to connect to server due to ${e.message}"
-                ) {
-                    goToLogin()
-                }
+                // Network reports "on" but server unreachable — fall back the same way.
+                handleOfflineEntry()
             }
         }
     }
 
     private fun checkAuthState() {
         lifecycleScope.launch {
-            delay(1200) // optional splash delay
-
+            delay(1200)
             val session = SessionManager(this@MainActivity)
             val token = session.getToken()
-
             if (token.isNullOrEmpty()) {
-                goToLogin()
-                return@launch
+                goToLogin(); return@launch
             }
-            // 🔑 JWT LOCAL EXPIRATION CHECK (LIKE WEB)
             if (JwtUtils.isTokenExpired(token)) {
                 session.clearSession()
                 goToLogin()
@@ -184,20 +170,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showLoading() {
-        binding.progressBar.visibility = View.VISIBLE
-    }
-
-    private fun hideLoading() {
-        binding.progressBar.visibility = View.GONE
-    }
-
+    private fun showLoading() { binding.progressBar.visibility = View.VISIBLE }
     private fun goToLogin() {
         binding.progressBar.visibility = View.GONE
         startActivity(Intent(this, LoginActivity::class.java))
         finish()
     }
-
     private fun goToDashboard() {
         startActivity(Intent(this, MainDashboard::class.java))
         finish()

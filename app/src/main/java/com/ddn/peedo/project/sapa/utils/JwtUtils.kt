@@ -68,4 +68,13 @@ object JwtUtils {
         }
     }
 
+    // ADD THIS — returns the token's expiry as epoch millis, or null if it can't be read
+    fun getExpiryMillis(token: String): Long? {
+        return try {
+            val json = decode(token)
+            json.optLong("exp", 0L).takeIf { it > 0 }?.times(1000)
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

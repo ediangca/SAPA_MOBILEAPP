@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+//    For Offline features
+    alias(libs.plugins.ksp)   // ADD THIS
 }
 
 android {
@@ -90,6 +92,11 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+
+//    For Offline features
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
 
 }
