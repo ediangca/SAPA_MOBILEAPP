@@ -566,6 +566,10 @@ class ScheduleFragment : Fragment() {
                         binding.offlineBanner.visibility =
                             View.VISIBLE
 
+                        binding.btnReconnect.setOnClickListener {
+                            loadSchedule(user)
+                        }
+
                         val syncedText =
                             result.lastSyncedAt?.let {
 
@@ -876,6 +880,7 @@ class ScheduleFragment : Fragment() {
         binding.btnRetry.setOnClickListener {
             loadSchedule(user)
         }
+
     }
 
 }

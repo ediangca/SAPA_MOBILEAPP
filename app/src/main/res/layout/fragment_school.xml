@@ -128,47 +128,81 @@
                 android:id="@+id/noInternetState"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:alpha="0"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:scaleX="0.9"
                 android:scaleY="0.9"
-                android:visibility="gone">
+                android:visibility="gone"
+                app:layout_anchor="@+id/swipeRefresh"
+                app:layout_anchorGravity="center">
 
-                <ImageView
-                    android:layout_width="120dp"
-                    android:layout_height="120dp"
-                    android:src="@drawable/vector_no_internet"
-                    app:tint="@color/secondary" />
-
-                <TextView
+                <!-- Today's Schedule Highlight -->
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:gravity="center"
-                    android:text="No internet connection"
-                    android:textColor="@color/secondary"
-                    android:textSize="16sp" />
+                    android:layout_marginHorizontal="16dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground"
+                    app:cardBackgroundColor="@color/primary"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="0dp"
+                    app:cardUseCompatPadding="true"
+                    app:contentPadding="30dp"
+                    app:rippleColor="@color/white">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:gravity="center"
-                    android:text="Please check your connection and try again"
-                    android:textColor="@color/secondary"
-                    android:textSize="13sp" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="16dp"
+                        android:weightSum="12">
 
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/btnRetry"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:gravity="center"
-                    android:text="Retry"
-                    android:textColor="@color/white"
-                    app:backgroundTint="@color/primary"
-                    app:cornerRadius="24dp" />
+                        <ImageView
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_weight="1"
+                            android:src="@drawable/vector_no_internet"
+                            app:tint="@color/white" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:layout_weight="8"
+                            android:fontFamily="@font/poppins_bold"
+                            android:text="No internet connection"
+                            android:textAlignment="center"
+                            android:textColor="@color/white"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center"
+                            android:text="Please check your connection and try again"
+                            android:textColor="@color/secondary"
+                            android:textSize="13sp" />
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/btnRetry"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="24dp"
+                            android:layout_weight="3"
+                            android:background="@drawable/bg_status_chip"
+                            android:fontFamily="@font/poppins_bold"
+                            android:paddingHorizontal="14dp"
+                            android:paddingVertical="6dp"
+                            android:src="@drawable/vector_refresh"
+                            android:textColor="@color/white"
+                            android:textSize="13sp" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
 
         </FrameLayout>

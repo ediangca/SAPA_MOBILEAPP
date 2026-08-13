@@ -47,7 +47,7 @@ class HomeFragment : Fragment() {
         SessionManager(requireContext())
     }
 
-    private  lateinit var user: VwUser
+    private lateinit var user: VwUser
 
     private var slots: List<VwSlot> = emptyList()
     private val list = ArrayList<VwSlot>()
@@ -77,6 +77,11 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Wire retry before anything async runs
+        binding.btnRetry.setOnClickListener {
+            if (::user.isInitialized) loadDashboard(user) else initComponent()
+        }
+
         initComponent()
         initRecycler()
     }
@@ -85,30 +90,37 @@ class HomeFragment : Fragment() {
     fun initComponent() {
         lifecycleScope.launch {
 
-            val userJson = session.getUser()
-            val privs = session.getPrivileges()
-
             val today = LocalDate.now()
-            val formatter = DateTimeFormatter.ofPattern(
-                "EEEE, MMM dd, yyyy",
-                Locale.ENGLISH
-            )
+            val formatter = DateTimeFormatter.ofPattern("EEEE, MMM dd, yyyy",  Locale.ENGLISH)
 
-            if (userJson == null) {
-                Log.e("SESSION", "User not found → redirect to login")
+            try {
+                showLoading()
+                val userJson = session.getUser()
+                val privs = session.getPrivileges()
+
+
+                if (userJson == null) {
+                    Log.e("SESSION", "User not found → redirect to login")
+                    return@launch
+                }
+
+                val userId = userJson.getString("userID")
+                val lastname = userJson.getString("lastname")
+                val fullname = userJson.getString("fullname")
+                val roleId = userJson.getString("roleID")
+
+                Log.d("HomeFragment_INFO", "USER DATA ID: $userId")
+                Log.d("HomeFragment_INFO", "USER DATA Name: $fullname")
+                Log.d("HomeFragment_INFO", "USER DATA Role: $roleId")
+
+                user = Gson().fromJson(userJson.toString(), VwUser::class.java)
+
+            } catch (e: Exception) {
+                hideLoading()
+                showNoInternetState()
+                Log.e("HomeFragment_INFO", "Error: ${e.message}")
                 return@launch
             }
-
-            val userId = userJson.getString("userID")
-            val lastname = userJson.getString("lastname")
-            val fullname = userJson.getString("fullname")
-            val roleId = userJson.getString("roleID")
-
-            Log.d("HomeFragment_INFO", "USER DATA ID: $userId")
-            Log.d("HomeFragment_INFO", "USER DATA Name: $fullname")
-            Log.d("HomeFragment_INFO", "USER DATA Role: $roleId")
-
-            user = Gson().fromJson(userJson.toString(), VwUser::class.java)
 
             with(binding) {
                 dateText.text = today.format(formatter)
@@ -122,6 +134,13 @@ class HomeFragment : Fragment() {
                     showTodayScheduleDialog()
                 }
 
+                binding.btnRetry.setOnClickListener {
+                    if (::user.isInitialized) {
+                        loadDashboard(user)
+                    }else {
+                        initComponent()      // session load itself failed, restart everything
+                    }
+                }
             }
 
             Log.d("HomeFragment_INFO", "SESSION User: $user")
@@ -136,11 +155,9 @@ class HomeFragment : Fragment() {
             emptyList(), requireContext(),
             lifecycleOwner = viewLifecycleOwner
         ) { slot ->
-            // TODO: handle shift click
-            // slot.slotID
-            // slot.shiftName
-            // slot.hospitalID
-            // slot.schoolID
+
+            binding.list.layoutManager = LinearLayoutManager(requireContext())
+            binding.list.adapter = scheduleadapter
         }
 
         binding.list.layoutManager = LinearLayoutManager(requireContext())
@@ -153,7 +170,10 @@ class HomeFragment : Fragment() {
 //        binding.list.isNestedScrollingEnabled = false   // <-- add this line
 
         binding.list.post {
-            Log.d("HomeFragment_INFO", "RecyclerView height: ${binding.list.height}, item count: ${scheduleadapter.itemCount}")
+            Log.d(
+                "HomeFragment_INFO",
+                "RecyclerView height: ${binding.list.height}, item count: ${scheduleadapter.itemCount}"
+            )
         }
     }
 
@@ -162,6 +182,7 @@ class HomeFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
+                showLoading() // ← add this
 
                 Log.d("HomeFragment_INFO", "Loading Dashboard: ${user.userID} - ${user.roleID}")
                 val response = RetrofitClient.api(requireContext())
@@ -175,9 +196,13 @@ class HomeFragment : Fragment() {
 
                     bindDashboard(data, user)
 
+                } else {
+                    hideLoading()  // ← response not successful, stop spinner
                 }
 
             } catch (e: Exception) {
+                hideLoading()
+                showNoInternetState() // ← add this; retry fails offline too
                 Log.e("HomeFragment_INFO", "Error: ${e.message}")
             }
         }
@@ -204,7 +229,7 @@ class HomeFragment : Fragment() {
                 }
 
                 // SCHOOL COORDINATOR / SUPERVISOR / CI
-                "UGR0003", "UGR0005", "UGR0006"  -> {
+                "UGR0003", "UGR0005", "UGR0006" -> {
                     cardPending.visibility = View.VISIBLE
                     cardConfirmed.visibility = View.VISIBLE
                     cardStudents.visibility = View.VISIBLE
@@ -235,9 +260,14 @@ class HomeFragment : Fragment() {
 
         loadRecentSchedule(user)
     }
+
     @RequiresApi(Build.VERSION_CODES.O)
     fun loadRecentSchedule(user: VwUser) {
 
+        // replays correctly if the user goes offline again after retrying
+        binding.noInternetState.alpha = 0f
+        binding.noInternetState.scaleX = 0.9f
+        binding.noInternetState.scaleY = 0.9f
         showLoading()
 
         lifecycleScope.launch {
@@ -282,13 +312,14 @@ class HomeFragment : Fragment() {
                     }
                 }
 
-                hideLoading()
                 binding.swipeRefresh.isRefreshing = false
                 list.clear()
 
                 if (response.isSuccessful && response.body() != null) {
+                    hideLoading()
                     processSlots(response.body()!!)
                 } else {
+                    hideLoading()
                     Log.e("HomeFragment_INFO", "Failed to fetch slots")
                 }
 
@@ -398,12 +429,7 @@ class HomeFragment : Fragment() {
         dialogBinding.todayScheduleList.layoutManager = LinearLayoutManager(requireContext())
         dialogBinding.todayScheduleList.adapter = todayAdapter
 
-        dialogBinding.txtDate.text =  LocalDate.now().format(dateFormatter)
-
-
-        binding.swipeRefresh.setOnRefreshListener {
-
-        }
+        dialogBinding.txtDate.text = LocalDate.now().format(dateFormatter)
 
         // Wire the drag-to-dismiss + close button first so the dialog is
         // interactive immediately, even while data is still loading
@@ -421,6 +447,7 @@ class HomeFragment : Fragment() {
                     startY = event.rawY
                     true
                 }
+
                 MotionEvent.ACTION_MOVE -> {
                     val delta = event.rawY - startY
                     // Only follow the finger for downward drags (dismiss/collapse gesture).
@@ -431,6 +458,7 @@ class HomeFragment : Fragment() {
                     }
                     true
                 }
+
                 MotionEvent.ACTION_UP -> {
                     val delta = event.rawY - startY
                     when {
@@ -453,6 +481,7 @@ class HomeFragment : Fragment() {
                     }
                     true
                 }
+
                 else -> false
             }
         }
@@ -630,7 +659,20 @@ class HomeFragment : Fragment() {
             legend.isEnabled = false
             xAxis.apply {
                 valueFormatter = com.github.mikephil.charting.formatter.IndexAxisValueFormatter(
-                    listOf("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+                    listOf(
+                        "Jan",
+                        "Feb",
+                        "Mar",
+                        "Apr",
+                        "May",
+                        "Jun",
+                        "Jul",
+                        "Aug",
+                        "Sep",
+                        "Oct",
+                        "Nov",
+                        "Dec"
+                    )
                 )
                 position = XAxis.XAxisPosition.BOTTOM
                 granularity = 1f
@@ -668,26 +710,24 @@ class HomeFragment : Fragment() {
         } else {
             binding.list.visibility = View.VISIBLE
             binding.emptyState.visibility = View.GONE
-            binding.noInternetState.visibility = View.GONE
         }
     }
 
     private fun showLoading() {
         binding.loadingState.visibility = View.VISIBLE
-        binding.list.visibility = View.GONE
+        binding.content.visibility = View.GONE
         binding.emptyState.visibility = View.GONE
         binding.noInternetState.visibility = View.GONE
     }
 
     private fun hideLoading() {
         binding.loadingState.visibility = View.GONE
+        binding.content.visibility = View.VISIBLE
     }
 
 
     private fun showEmptyState() {
         binding.list.visibility = View.GONE
-        binding.noInternetState.visibility = View.GONE
-
         binding.emptyState.apply {
             visibility = View.VISIBLE
             animate()
@@ -699,10 +739,9 @@ class HomeFragment : Fragment() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun showNoInternetState() {
-        binding.list.visibility = View.GONE
-        binding.emptyState.visibility = View.GONE
+        binding.content.visibility = View.GONE
+        binding.loadingState.visibility = View.GONE
 
         binding.noInternetState.apply {
             visibility = View.VISIBLE
@@ -713,12 +752,7 @@ class HomeFragment : Fragment() {
                 .setDuration(300)
                 .start()
         }
-
-        binding.btnRetry.setOnClickListener {
-            loadRecentSchedule(user)
-        }
     }
-
 
 
     override fun onDestroyView() {

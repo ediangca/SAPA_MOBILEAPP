@@ -150,7 +150,6 @@ class SchoolFragment : Fragment() {
             try {
                 val response = RetrofitClient.create(requireContext()).getSchools()
 
-                hideLoading()
                 binding.swipeRefresh.isRefreshing = false
 
                 if (response.isSuccessful) {
@@ -171,6 +170,7 @@ class SchoolFragment : Fragment() {
                     binding.swipeRefresh.isRefreshing = false
                     showNoInternetState()
                 }
+                hideLoading()
 
             } catch (e: Exception) {
                 Log.d(

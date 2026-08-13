@@ -138,9 +138,15 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         binding.spinnerRole.setSelection(restoredIndex)
 
         binding.spinnerRole.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
                 applyFilters()
             }
+
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
@@ -160,14 +166,20 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                 currentUserRoleId = sessionUser?.optString("roleID")?.takeIf { it.isNotBlank() }
                 currentUserSchoolId = sessionUser?.optString("schoolID")?.takeIf { it.isNotBlank() }
 
-                Log.d("UsersFragment", "currentUserId=$currentUserId, " +
-                        "currentUserRoleId=$currentUserRoleId, currentUserSchoolId=$currentUserSchoolId")
+                Log.d(
+                    "UsersFragment", "currentUserId=$currentUserId, " +
+                            "currentUserRoleId=$currentUserRoleId, currentUserSchoolId=$currentUserSchoolId"
+                )
 
                 val response = api.getUsers()
+
                 binding.swipeRefresh.isRefreshing = false
 
                 if (currentUserRoleId == null) {
-                    Log.e("UsersFragment", "roleID missing from session — check SessionManager keys")
+                    Log.e(
+                        "UsersFragment",
+                        "roleID missing from session — check SessionManager keys"
+                    )
                 }
 
                 if (response.isSuccessful) {
@@ -175,7 +187,10 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                     Log.d("UsersFragment", "Fetched ${fetchedUsers.size} users from API")
 
                     allUsers = scopeUsersByRole(fetchedUsers)
-                    Log.d("UsersFragment", "After role/school scoping: ${allUsers.size} users remain")
+                    Log.d(
+                        "UsersFragment",
+                        "After role/school scoping: ${allUsers.size} users remain"
+                    )
 
                     // Build role filter options from actual data, excluding admin/default roles
                     val distinctRoles = allUsers
@@ -190,27 +205,29 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
 //                    applyFilter(statusFilters[binding.spinnerStatus.selectedItemPosition])
                 } else {
                     val errorBody = response.errorBody()?.string()
-                    Log.e("UsersFragment", "getUsers() failed: code=${response.code()}, body=$errorBody")
-                    showEmpty("Failed to load users (${response.code()})")
-                    SweetAlertUtil.showError(
-                        requireContext(),
-                        "Failed to Load Users",
-                        "Server returned an error (code ${response.code()})."
+                    Log.e(
+                        "UsersFragment",
+                        "getUsers() failed: code=${response.code()}, body=$errorBody"
                     )
+                    showEmptyState()
+//                    SweetAlertUtil.showError(
+//                        requireContext(),
+//                        "Failed to Load Users",
+//                        "Server returned an error (code ${response.code()})."
+//                    )
                 }
-            } catch (e: UnknownHostException) {
-                Log.e("UsersFragment", "No internet connection", e)
-                binding.swipeRefresh.isRefreshing = false
-                showNoInternet()
+
+                hideLoading()
+//            } catch (e: UnknownHostException) {
+//                Log.e("UsersFragment", "No internet connection", e)
+//                hideLoading()
+//                binding.swipeRefresh.isRefreshing = false
+//                showNoInternetState()
             } catch (e: Exception) {
-                Log.e("UsersFragment", "Unexpected error loading users", e)
+                Log.d("UsersFragment", "Error: " + e.message)
+                hideLoading()
                 binding.swipeRefresh.isRefreshing = false
-                showEmpty("Something went wrong: ${e.message}")
-                SweetAlertUtil.showError(
-                    requireContext(),
-                    "Something Went Wrong",
-                    e.message ?: "Unknown error occurred while loading users."
-                )
+                showNoInternetState()
             }
         }
     }
@@ -228,20 +245,31 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                 Log.e("UsersFragment", "scopeUsersByRole: roleId is null, returning empty list")
                 emptyList()
             }
+
             roleId in UserRoleUtil.adminTierRoles -> {
-                Log.d("UsersFragment", "scopeUsersByRole: admin-tier role ($roleId), showing all users")
+                Log.d(
+                    "UsersFragment",
+                    "scopeUsersByRole: admin-tier role ($roleId), showing all users"
+                )
                 users
             }
+
             else -> {
                 val schoolId = currentUserSchoolId
                 if (schoolId.isNullOrBlank()) {
-                    Log.e("UsersFragment", "scopeUsersByRole: non-admin role ($roleId) but schoolId is null/blank, returning empty list")
+                    Log.e(
+                        "UsersFragment",
+                        "scopeUsersByRole: non-admin role ($roleId) but schoolId is null/blank, returning empty list"
+                    )
                     emptyList()
                 } else {
                     val filtered = users.filter { user ->
                         user.roleID in UserRoleUtil.schoolScopedRoles && user.schoolID == schoolId
                     }
-                    Log.d("UsersFragment", "scopeUsersByRole: school-scoped role ($roleId), schoolId=$schoolId, matched ${filtered.size}/${users.size}")
+                    Log.d(
+                        "UsersFragment",
+                        "scopeUsersByRole: school-scoped role ($roleId), schoolId=$schoolId, matched ${filtered.size}/${users.size}"
+                    )
                     filtered
                 }
             }
@@ -250,26 +278,10 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         return roleScoped.filter { it.userID != currentUserId }
     }
 
-    private fun applyFilter(filter: String) {
-        val filtered = when (filter) {
-            "Unverified" -> allUsers.filter { it.status == UserStatusUtil.UNVERIFIED }
-            "Pending" -> allUsers.filter { it.status == UserStatusUtil.PENDING }
-            "Approved" -> allUsers.filter { it.status == UserStatusUtil.APPROVED }
-            "Suspended" -> allUsers.filter { it.status == UserStatusUtil.SUSPENDED }
-            "Inactive" -> allUsers.filter { it.status == UserStatusUtil.INACTIVE }
-            else -> allUsers
-        }
-
-        if (filtered.isEmpty()) {
-            showEmpty("No users found")
-        } else {
-            showList()
-            adapter.submitList(filtered)
-        }
-    }
 
     private fun applyFilters() {
-        val selectedStatus = statusFilters.getOrElse(binding.spinnerStatus.selectedItemPosition) { "All" }
+        val selectedStatus =
+            statusFilters.getOrElse(binding.spinnerStatus.selectedItemPosition) { "All" }
         val selectedRole = roleFilters.getOrElse(binding.spinnerRole.selectedItemPosition) { "All" }
 
         var filtered = allUsers.filter { it.roleID !in excludedRoleIds }
@@ -294,10 +306,7 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         }
 
         if (filtered.isEmpty()) {
-            showEmpty(
-                if (currentSearchQuery.isNotEmpty()) "No users found matching \"$currentSearchQuery\""
-                else "No users found"
-            )
+            showEmptyState()
         } else {
             showList()
             adapter.submitList(filtered)
@@ -337,14 +346,26 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                 val response = api.approveUser(user.userID)
                 adapter.setLoading(user.userID, false)
                 if (response.isSuccessful) {
-                    SweetAlertUtil.showSuccess(requireContext(), "Approved", "${user.fullname} has been approved!")
+                    SweetAlertUtil.showSuccess(
+                        requireContext(),
+                        "Approved",
+                        "${user.fullname} has been approved!"
+                    )
                     loadUsers()
                 } else {
-                    SweetAlertUtil.showError(requireContext(), "Failed to approve", "Error ${response.code()}")
+                    SweetAlertUtil.showError(
+                        requireContext(),
+                        "Failed to approve",
+                        "Error ${response.code()}"
+                    )
                 }
             } catch (e: Exception) {
                 adapter.setLoading(user.userID, false)
-                SweetAlertUtil.showError(requireContext(), "Failed to approve", e.message ?: "Unknown error")
+                SweetAlertUtil.showError(
+                    requireContext(),
+                    "Failed to approve",
+                    e.message ?: "Unknown error"
+                )
             }
         }
     }
@@ -356,49 +377,84 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                 val response = api.resendVerification(user.email)
                 adapter.setLoading(user.userID, false)
                 if (response.isSuccessful) {
-                    SweetAlertUtil.showSuccess(requireContext(), "Verification Sent", "Verification successfully sent!")
+                    SweetAlertUtil.showSuccess(
+                        requireContext(),
+                        "Verification Sent",
+                        "Verification successfully sent!"
+                    )
                     loadUsers()
                 } else {
                     val errorMsg = response.errorBody()?.string() ?: "Error ${response.code()}"
-                    SweetAlertUtil.showError(requireContext(), "Failed to resend verification", errorMsg)
+                    SweetAlertUtil.showError(
+                        requireContext(),
+                        "Failed to resend verification",
+                        errorMsg
+                    )
                 }
             } catch (e: Exception) {
                 adapter.setLoading(user.userID, false)
-                SweetAlertUtil.showError(requireContext(), "Failed to resend verification", e.message ?: "Unknown error")
+                SweetAlertUtil.showError(
+                    requireContext(),
+                    "Failed to resend verification",
+                    e.message ?: "Unknown error"
+                )
             }
         }
     }
 
+
     // ---------- State helpers ----------
 
     private fun showLoading() {
-        binding.loadingState.isVisible = true
-        binding.list.isVisible = false
-        binding.emptyState.isVisible = false
-        binding.noInternetState.isVisible = false
+        binding.loadingState.visibility = View.VISIBLE
+        binding.list.visibility = View.GONE
+        binding.emptyState.visibility = View.GONE
+        binding.noInternetState.visibility = View.GONE
+    }
+
+    private fun hideLoading() {
+        binding.loadingState.visibility = View.GONE
     }
 
     private fun showList() {
-        binding.loadingState.isVisible = false
-        binding.list.isVisible = true
-        binding.emptyState.isVisible = false
-        binding.noInternetState.isVisible = false
+        binding.loadingState.visibility = View.GONE
+        binding.list.visibility = View.VISIBLE
+        binding.emptyState.visibility = View.GONE
+        binding.noInternetState.visibility = View.GONE
     }
 
-    private fun showEmpty(message: String) {
-        binding.loadingState.isVisible = false
-        binding.list.isVisible = false
-        binding.emptyState.isVisible = true
-        binding.noInternetState.isVisible = false
-        binding.emptyStateMessage.text = message
+    private fun showEmptyState() {
+        binding.list.visibility = View.GONE
+        binding.noInternetState.visibility = View.GONE
+
+        binding.emptyState.apply {
+            visibility = View.VISIBLE
+            animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(300)
+                .start()
+        }
     }
 
-    private fun showNoInternet() {
-        binding.loadingState.isVisible = false
-        binding.list.isVisible = false
-        binding.emptyState.isVisible = false
-        binding.noInternetState.isVisible = true
-        binding.btnRetry.setOnClickListener { loadUsers() }
+    private fun showNoInternetState() {
+        binding.list.visibility = View.GONE
+        binding.emptyState.visibility = View.GONE
+
+        binding.noInternetState.apply {
+            visibility = View.VISIBLE
+            animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(300)
+                .start()
+        }
+
+        binding.btnRetry.setOnClickListener {
+            loadUsers()
+        }
     }
 
     private fun showSuccessAlert(title: String, message: String) {

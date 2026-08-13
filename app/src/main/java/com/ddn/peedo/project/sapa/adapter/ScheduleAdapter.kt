@@ -754,36 +754,36 @@ class ScheduleAdapter(
 
                     qrScan.setOnClickListener {
 
-                        if (
-                            isAttendanceRestrictionEnabled &&
-                            !isWithinSlotTime(
-                                slot.startTime,
-                                slot.endTime
-                            )
-                        ) {
-
-                            val startTime =
-                                LocalTime.parse(
-                                    slot.startTime,
-                                    dateFormatter
-                                )
-
-                            val adjustedStart =
-                                startTime.minusHours(1)
-
-                            val adjustedEnd =
-                                startTime.plusHours(1)
-
-                            SweetAlertUtil.showWarning(
-                                context,
-                                "Not Allowed",
-                                "QR scanning is only allowed between\n" +
-                                        "${adjustedStart.format(timeFormatter)} - " +
-                                        "${adjustedEnd.format(timeFormatter)}"
-                            )
-
-                            return@setOnClickListener
-                        }
+//                        if (
+//                            isAttendanceRestrictionEnabled &&
+//                            !isWithinSlotTime(
+//                                slot.startTime,
+//                                slot.endTime
+//                            )
+//                        ) {
+//
+//                            val startTime =
+//                                LocalTime.parse(
+//                                    slot.startTime,
+//                                    dateFormatter
+//                                )
+//
+//                            val adjustedStart =
+//                                startTime.minusHours(1)
+//
+//                            val adjustedEnd =
+//                                startTime.plusHours(1)
+//
+//                            SweetAlertUtil.showWarning(
+//                                context,
+//                                "Not Allowed",
+//                                "QR scanning is only allowed between\n" +
+//                                        "${adjustedStart.format(timeFormatter)} - " +
+//                                        "${adjustedEnd.format(timeFormatter)}"
+//                            )
+//
+//                            return@setOnClickListener
+//                        }
 
                         onQrScanClicked(slot)
                     }
