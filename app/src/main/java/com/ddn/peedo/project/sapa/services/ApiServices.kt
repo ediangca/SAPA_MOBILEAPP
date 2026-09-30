@@ -122,6 +122,32 @@ interface ApiService {
         @Path("id") slotId: String
     ): Response<List<VwAppointedStudent>>
 
+    /**
+     * BULK replication endpoint: all appointed students whose slot falls in
+     * [year] — one request instead of one-per-slot. Used by the offline sync;
+     * per-slot remains the fallback for older server builds.
+     */
+    @GET("AppointedStudents/year/{year}")
+    suspend fun getAppointedStudentsByYear(
+        @Path("year") year: Int
+    ): Response<List<VwAppointedStudent>>
+
+    //-----------------Sync manifest (count validation)-----------------//
+
+    /**
+     * Cheap role-scoped record counts mirroring exactly what the offline
+     * replication caches. OfflineSyncManager compares them with the local
+     * Room counts and re-downloads only the modules that actually differ.
+     */
+    @GET("SyncManifest")
+    suspend fun getSyncManifest(
+        @Query("year") year: Int,
+        @Query("userID") userId: String,
+        @Query("roleID") roleId: String,
+        @Query("hospitalID") hospitalId: String?,
+        @Query("schoolIds") schoolIds: String?
+    ): Response<SyncManifest>
+
 
 
     //-----------------Attendance-----------------//
@@ -147,6 +173,18 @@ interface ApiService {
         @Body request: AttendanceRequest
     ): Response<AttendanceResponse>
 
+    //-----------------Offline queue upload-----------------//
+
+    /**
+     * Batch upload for the offline attendance queue. Always returns HTTP 200
+     * with per-item results (see BatchAttendanceResponse) so the worker can
+     * mark exactly which queued rows uploaded and which failed.
+     */
+    @POST("Attendance/batch")
+    suspend fun postAttendanceBatch(
+        @Body request: BatchAttendanceRequest
+    ): Response<BatchAttendanceResponse>
+
 
     //-----------------Settinggs-----------------//
 
@@ -157,4 +195,45 @@ interface ApiService {
 
 data class GenericResponse(
     val message: String? = null
+)
+
+/**
+ * One item in a batch upload. ScannedAt preserves the true scan time when the
+ * record was captured offline (server stores it as DateCreated/DateUpdated).
+ */
+data class BatchAttendanceItem(
+    val SlotID: String,
+    val UserID: String,
+    val Status: Int = 1,
+    val ScannedAt: String? = null
+)
+
+data class BatchAttendanceRequest(
+    val items: List<BatchAttendanceItem>
+)
+
+data class BatchAttendanceItemResult(
+    val SlotID: String,
+    val UserID: String,
+    val Succeeded: Boolean,
+    val Code: String? = null,
+    val Message: String? = null,
+    val ATTID: String? = null
+)
+
+data class BatchAttendanceResponse(
+    val succeeded: List<BatchAttendanceItemResult>,
+    val failed: List<BatchAttendanceItemResult>
+)
+
+/**
+ * Server-side record counts for the modules replicated by OfflineSyncManager
+ * (GET SyncManifest). Field names map to the API's camelCase JSON.
+ */
+data class SyncManifest(
+    val slots: Int = 0,
+    val appointedStudents: Int = 0,
+    val attendance: Int = 0,
+    val schools: Int = 0,
+    val users: Int = 0
 )

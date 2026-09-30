@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -25,18 +24,19 @@ import android.view.MotionEvent
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.ddn.peedo.project.sapa.R
-import com.ddn.peedo.project.sapa.data.repository.SlotRepository
-import com.ddn.peedo.project.sapa.data.repository.SlotResult
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.google.gson.Gson
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import android.view.View
 import com.ddn.peedo.project.sapa.data.local.SapaDatabase
-import com.ddn.peedo.project.sapa.data.local.entity.AttendanceEntity
-import com.ddn.peedo.project.sapa.data.repository.AttendanceRepository
-import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
+import com.ddn.peedo.project.sapa.data.repository.AttendanceQueueRepository
+import com.ddn.peedo.project.sapa.data.repository.OfflineSyncManager
+import com.ddn.peedo.project.sapa.work.AttendanceUploadWorker
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -99,6 +99,8 @@ class ScheduleFragment : Fragment() {
         initSpinner()
         initCalendar()
 
+        initPendingUploadWatcher()
+
         lifecycleScope.launch {
 
             val userJson = session.getUser()
@@ -132,7 +134,7 @@ class ScheduleFragment : Fragment() {
 
                 binding.swipeRefresh.setOnRefreshListener {
                     resetFilters()
-                    loadSchedule(user)
+                    loadSchedule(user, force = true)
                 }
 
             }
@@ -146,6 +148,56 @@ class ScheduleFragment : Fragment() {
 
     }
 
+
+    // =========================================================
+    // OFFLINE ATTENDANCE AUTO-UPLOAD
+    //
+    // Uploads start by themselves (post-scan flush + WorkManager),
+    // so there is no upload button here. The amber banner appears
+    // while records are waiting and flips to "Uploading N…" with a
+    // live spinner while AttendanceQueueRepository drains the queue.
+    // =========================================================
+
+    private var isPendingUploadWatcherActive = false
+
+    private fun initPendingUploadWatcher() {
+        if (isPendingUploadWatcherActive) return
+        isPendingUploadWatcherActive = true
+
+        val queueDao = SapaDatabase.getInstance(requireContext()).attendanceQueueDao()
+        val queueRepo = AttendanceQueueRepository(requireContext())
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Waiting count (queue table) + in-flight flag (repository) —
+            // together they drive the automatic-upload banner.
+            combine(
+                queueDao.observePendingCount(),
+                queueRepo.uploadState
+            ) { pending, upload -> pending to upload }
+                .collect { (pending, upload) ->
+                    if (pending > 0) {
+                        binding.pendingUploadBanner.visibility = View.VISIBLE
+
+                        if (upload.uploading) {
+                            // Upload in flight — show live progress; the
+                            // waiting count drops as rows are marked synced.
+                            binding.uploadSpinner.visibility = View.VISIBLE
+                            binding.pendingUploadText.text =
+                                "Uploading $pending attendance record(s)…"
+                        } else {
+                            binding.uploadSpinner.visibility = View.GONE
+                            binding.pendingUploadText.text =
+                                "$pending attendance record(s) waiting to upload"
+
+                            // Opportunistic flush on resume/reconnect while visible
+                            AttendanceUploadWorker.enqueueOneTimeFlush(requireContext())
+                        }
+                    } else {
+                        binding.pendingUploadBanner.visibility = View.GONE
+                    }
+                }
+        }
+    }
 
     private fun initSpinner() {
         val statusAdapter = ArrayAdapter(
@@ -469,7 +521,7 @@ class ScheduleFragment : Fragment() {
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun loadSchedule(user: VwUser) {
+    private fun loadSchedule(user: VwUser, force: Boolean = false) {
 
         showLoading()
 
@@ -477,19 +529,15 @@ class ScheduleFragment : Fragment() {
 
             try {
 
-                val repo =
-                    SlotRepository(requireContext())
-
-                val year =
-                    LocalDate.now().year
-
+                // SINGLE download path — schedules, appointed students and
+                // attendance are ALL fetched & replicated into Room by the
+                // OfflineSyncManager, with live % in the blue banner. When
+                // offline it falls back to the Room cache automatically.
+                // force = true only for explicit refreshes (swipe, Sync Now,
+                // Reconnect): tab entry reuses a fresh replica instead of
+                // re-downloading everything.
                 val result =
-                    repo.getSlots(
-                        roleID = user.roleID,
-                        userID = user.userID,
-                        hospitalID = user.hospitalID,
-                        year = year
-                    )
+                    OfflineSyncManager.runSync(requireContext(), force)
 
                 hideLoading()
 
@@ -497,13 +545,15 @@ class ScheduleFragment : Fragment() {
 
                 list.clear()
 
-                when (result) {
+                when {
 
                     // =====================================================
-                    // ONLINE
+                    // ONLINE — fresh data replicated into Room by the
+                    // manager (schedules + interns + attendance, live %
+                    // shown in the blue sync banner).
                     // =====================================================
 
-                    is SlotResult.FromServer -> {
+                    result.fromServer -> {
 
                         binding.offlineBanner.visibility =
                             View.GONE
@@ -512,62 +562,24 @@ class ScheduleFragment : Fragment() {
                             result.slots
                         )
 
-
-
                         updateCalendar(
                             list
                         )
 
                         applyCombinedFilter()
-
-
-                        // ---------------------------------------------
-                        // IMPORTANT
-                        // Only ONE API request.
-                        // ---------------------------------------------
-
-                        val relevantSlots =
-                            getRelevantSlotsForAttendance(result.slots)
-
-                        val attendanceRepository =
-                            AttendanceRepository(requireContext())
-
-                        Log.d(
-                            "AttendanceSync",
-                            "Total slots: ${result.slots.size}"
-                        )
-
-                        Log.d(
-                            "AttendanceSync",
-                            "Relevant slots: ${relevantSlots.size}"
-                        )
-
-                        lifecycleScope.launch {
-
-//                        Synchronize ALL attendance here.
-//                        syncAttendance(result.slots)
-
-                        syncAttendance(relevantSlots)
-
-//                         For Large Data
-//                         val success = attendanceRepository.sync()
-//                         Log.d("AttendanceSync","Background sync result: $success")
-
-                        }
-
                     }
 
                     // =====================================================
-                    // OFFLINE
+                    // OFFLINE — showing the Room cache
                     // =====================================================
 
-                    is SlotResult.FromCache -> {
+                    !result.fromServer && result.slots.isNotEmpty() -> {
 
                         binding.offlineBanner.visibility =
                             View.VISIBLE
 
                         binding.btnReconnect.setOnClickListener {
-                            loadSchedule(user)
+                            loadSchedule(user, force = true)
                         }
 
                         val syncedText =
@@ -591,7 +603,7 @@ class ScheduleFragment : Fragment() {
                             syncedText
 
                         binding.btnSyncNow.setOnClickListener {
-                            loadSchedule(user)
+                            loadSchedule(user, force = true)
                         }
 
                         list.addAll(
@@ -613,10 +625,10 @@ class ScheduleFragment : Fragment() {
                     }
 
                     // =====================================================
-                    // NOTHING CACHED
+                    // NOTHING CACHED (offline & never synced)
                     // =====================================================
 
-                    is SlotResult.EmptyNoConnection -> {
+                    else -> {
 
                         binding.offlineBanner.visibility =
                             View.GONE
@@ -641,169 +653,9 @@ class ScheduleFragment : Fragment() {
         }
     }
 
-    private suspend fun syncAttendance(
-        slots: List<VwSlot>
-    ) {
+    // (Attendance download moved into OfflineSyncManager — it runs as the
+    // final phase of every replication pass, with live % in the banner.)
 
-        if (slots.isEmpty()) {
-            Log.d(
-                "AttendanceSync",
-                "No schedules available for attendance sync."
-            )
-            return
-        }
-
-        try {
-
-            val slotIds =
-                slots
-                    .map { it.slotID }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-
-            if (slotIds.isEmpty()) {
-                return
-            }
-
-            Log.d(
-                "AttendanceSync",
-                "Syncing attendance for ${slotIds.size} slots"
-            )
-
-            val api =
-                RetrofitClient
-                    .create(requireContext())
-
-            val response =
-                api.getAttendanceBySlots(slotIds)
-
-            if (!response.isSuccessful) {
-
-                Log.e(
-                    "AttendanceSync",
-                    "API failed: ${response.code()}"
-                )
-
-                return
-            }
-
-            val serverAttendance =
-                response.body().orEmpty()
-
-            Log.d(
-                "AttendanceSync",
-                "Server returned ${serverAttendance.size} attendance records"
-            )
-
-            val entities =
-                serverAttendance.mapNotNull { attendance ->
-
-                    if (attendance.attID.isNullOrBlank()) {
-
-                        Log.e(
-                            "AttendanceSync",
-                            "Skipping attendance record with null/empty ATTID"
-                        )
-
-                        null
-
-                    } else {
-
-                        AttendanceEntity(
-                            attID =
-                                attendance.attID,
-
-                            slotID =
-                                attendance.slotID,
-
-                            userID =
-                                attendance.userID,
-
-                            status =
-                                attendance.status,
-
-                            dateCreated =
-                                attendance.dateCreated,
-
-                            dateUpdated =
-                                attendance.dateUpdated
-                        )
-                    }
-                }
-
-            val attendanceDao =
-                SapaDatabase
-                    .getInstance(requireContext())
-                    .attendanceDao()
-
-            withContext(Dispatchers.IO) {
-
-                if (entities.isNotEmpty()) {
-
-                    attendanceDao.upsertAll(
-                        entities
-                    )
-                }
-            }
-
-            Log.d(
-                "AttendanceSync",
-                "Successfully cached ${entities.size} attendance records"
-            )
-
-        } catch (e: Exception) {
-
-            Log.e(
-                "AttendanceSync",
-                "Failed to synchronize attendance",
-                e
-            )
-
-            // Do NOT clear the existing Room attendance.
-            //
-            // The previous synchronized data remains available
-            // for offline use.
-        }
-    }
-
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun getRelevantSlotsForAttendance(
-        slots: List<VwSlot>
-    ): List<VwSlot> {
-
-        val today = LocalDate.now()
-
-        val fromDate = today.minusDays(7)
-        val toDate = today.plusDays(30)
-
-        return slots.filter { slot ->
-
-            val dateString = slot.dateSlot
-
-            if (dateString.isNullOrBlank()) {
-                false
-            } else {
-                try {
-
-                    val slotDate =
-                        LocalDate.parse(dateString)
-
-                    slotDate in fromDate..toDate
-
-                } catch (e: Exception) {
-
-                    Log.e(
-                        "AttendanceSync",
-                        "Invalid slot date: $dateString",
-                        e
-                    )
-
-                    false
-                }
-            }
-        }
-    }
     private fun mapStatus(status: Int?): String {
         return when (status) {
             0 -> "PENDING"

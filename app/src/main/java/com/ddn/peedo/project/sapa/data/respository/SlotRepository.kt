@@ -7,6 +7,7 @@ import com.ddn.peedo.project.sapa.data.local.SapaDatabase
 import com.ddn.peedo.project.sapa.data.local.entity.AppointedStudentEntity
 import com.ddn.peedo.project.sapa.data.local.entity.SlotEntity
 import com.ddn.peedo.project.sapa.data.local.entity.SyncMetaEntity
+import com.ddn.peedo.project.sapa.model.VwAppointedStudent
 import com.ddn.peedo.project.sapa.model.VwSlot
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.utils.ConnectivityUtils
@@ -30,10 +31,7 @@ sealed class SlotResult {
     ) : SlotResult()
 
     object EmptyNoConnection : SlotResult()
-}
-
-
-class SlotRepository(
+}class SlotRepository(
     private val context: Context
 ) {
 
@@ -53,12 +51,20 @@ class SlotRepository(
     private val syncMetaDao =
         db.syncMetaDao()
 
+    /**
+     * Set when the download-sync is running in “replication” mode
+     * (includeStudents = true): reports how many slots' appointed students
+     * have been fetched so far so the UI can show a live %.
+     */
+    var onSlotStudentsProgress: ((done: Int, total: Int) -> Unit)? = null
+
 
     suspend fun getSlots(
         roleID: String,
         userID: String,
         hospitalID: String?,
-        year: Int
+        year: Int,
+        includeStudents: Boolean = false
     ): SlotResult {
 
         if (ConnectivityUtils.isNetworkAvailable(context)) {
@@ -120,9 +126,13 @@ class SlotRepository(
                     // CACHE APPOINTED STUDENTS
                     // ==========================================
 
-                    cacheAppointedStudents(
-                        slots
-                    )
+                    if (includeStudents) {
+
+                        cacheAppointedStudents(
+                            slots,
+                            year
+                        )
+                    }
 
 
                     return SlotResult.FromServer(
@@ -197,10 +207,14 @@ class SlotRepository(
 
     // =========================================================
     // CACHE ALL APPOINTED STUDENTS
+    //
+    // internal so OfflineSyncManager can re-run this phase alone when
+    // count validation says only the appointed-students module changed.
     // =========================================================
 
-    private suspend fun cacheAppointedStudents(
-        slots: List<VwSlot>
+    internal suspend fun cacheAppointedStudents(
+        slots: List<VwSlot>,
+        year: Int
     ) {
 
         val slotIds =
@@ -212,6 +226,8 @@ class SlotRepository(
 
             appointedStudentDao.clear()
 
+            onSlotStudentsProgress?.invoke(0, 0)
+
             return
         }
 
@@ -221,59 +237,118 @@ class SlotRepository(
 
 
         // -----------------------------------------------------
-        // Request students for all slots concurrently
+        // BULK FIRST: one request for the whole year. This removes
+        // the per-slot “request storm” (N requests) — the biggest
+        // sync-speed lever on slow connections. Falls back to
+        // per-slot requests only if the bulk endpoint is unavailable
+        // (e.g. an older server build without it).
         // -----------------------------------------------------
 
-        val results =
-            coroutineScope {
+        var allStudents: List<VwAppointedStudent> = emptyList()
+        var usedBulk = false
 
-                slotIds.map { slotId ->
+        try {
 
-                    async(Dispatchers.IO) {
+            val bulkResponse =
+                api.getAppointedStudentsByYear(year)
 
-                        try {
+            if (bulkResponse.isSuccessful) {
 
-                            val response =
-                                api.getAppointedStudentsBySlotID(
-                                    slotId
-                                )
+                val slotIdSet = slotIds.toHashSet()
 
-                            if (response.isSuccessful) {
+                allStudents =
+                    bulkResponse.body()
+                        .orEmpty()
+                        .filter { it.slotID in slotIdSet }
 
-                                response.body()
-                                    .orEmpty()
+                usedBulk = true
 
-                            } else {
+                onSlotStudentsProgress?.invoke(1, 1)
 
-                                Log.w(
+                Log.d(
+                    "SlotRepository",
+                    "Bulk download: ${allStudents.size} appointed students for $year"
+                )
+
+            } else {
+
+                Log.w(
+                    "SlotRepository",
+                    "Bulk student API failed: ${bulkResponse.code()} — falling back to per-slot"
+                )
+            }
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "SlotRepository",
+                "Bulk student API error — falling back to per-slot",
+                e
+            )
+        }
+
+        if (!usedBulk) {
+
+            // -------------------------------------------------
+            // FALLBACK: request students per slot concurrently,
+            // reporting per-slot progress so the UI can show a
+            // live download %.
+            // -------------------------------------------------
+
+            var settled = 0
+
+            val results =
+                coroutineScope {
+
+                    slotIds.map { slotId ->
+
+                        async(Dispatchers.IO) {
+
+                            try {
+
+                                val response =
+                                    api.getAppointedStudentsBySlotID(
+                                        slotId
+                                    )
+
+                                if (response.isSuccessful) {
+
+                                    response.body()
+                                        .orEmpty()
+
+                                } else {
+
+                                    Log.w(
+                                        "SlotRepository",
+                                        "Student API failed for slot $slotId: ${response.code()}"
+                                    )
+
+                                    emptyList()
+                                }
+
+                            } catch (e: Exception) {
+
+                                Log.e(
                                     "SlotRepository",
-                                    "Student API failed for slot $slotId: ${response.code()}"
+                                    "Error loading students for slot $slotId",
+                                    e
                                 )
 
                                 emptyList()
+                            } finally {
+                                synchronized(this@SlotRepository) {
+                                    settled++
+                                    onSlotStudentsProgress?.invoke(settled, slotIds.size)
+                                }
                             }
-
-                        } catch (e: Exception) {
-
-                            Log.e(
-                                "SlotRepository",
-                                "Error loading students for slot $slotId",
-                                e
-                            )
-
-                            emptyList()
                         }
-                    }
-                }.awaitAll()
-            }
+                    }.awaitAll()
+                }
 
 
-        // -----------------------------------------------------
-        // Flatten all results
-        // -----------------------------------------------------
-
-        val allStudents =
-            results.flatten()
+            allStudents =
+                results.flatten()
+        }
 
 
         Log.d(
@@ -433,10 +508,10 @@ private fun VwSlot.toEntity() = SlotEntity(
 
 
 // =========================================================
-// Room Entity → VwSlot
+// Room Entity → VwSlot (internal so OfflineSyncManager reuses it)
 // =========================================================
 
-private fun SlotEntity.toModel() = VwSlot(
+internal fun SlotEntity.toModel() = VwSlot(
     slotID = slotID,
     bookID = bookID,
     dateSlot = dateSlot,

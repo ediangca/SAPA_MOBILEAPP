@@ -34,6 +34,9 @@ import com.ddn.peedo.project.sapa.R
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.local.entity.AttendanceEntity
+import com.ddn.peedo.project.sapa.data.repository.AttendanceQueueRepository
+import com.ddn.peedo.project.sapa.utils.ConnectivityUtils
 import com.ddn.peedo.project.sapa.databinding.DialogDepartmentShiftsBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
 import com.ddn.peedo.project.sapa.databinding.DialogStudentsBinding
@@ -1236,148 +1239,20 @@ class ScheduleAdapter(
 
                                 CoroutineScope(Dispatchers.Main).launch {
                                     try {
-                                        // 1️⃣ Validate attendance
-                                        Toast.makeText(context, "Scanning...", Toast.LENGTH_SHORT)
-                                            .show()
-                                        val validateResponse = RetrofitClient.create(context)
-                                            .validateAttendance(scannedUserId, slotId)
-
-                                        Log.d(
-                                            "ScheduleFragment_INFO",
-                                            "Scan QR: ${validateResponse.isSuccessful}"
-                                        )
-                                        if (!validateResponse.isSuccessful || validateResponse.body() == null) {
-                                            SweetAlertUtil.showError(
-                                                context,
-                                                "Error",
-                                                validateResponse.message()
-                                                    ?: "Either Attendant is not found!"
-                                            )
-                                            return@launch
+                                        if (ConnectivityUtils.isNetworkAvailable(context)) {
+                                            handleOnlineScan(scannedUserId, slotId)
+                                        } else {
+                                            handleOfflineScan(scannedUserId, slotId)
                                         }
-
-                                        val validation = validateResponse.body()!!
-
-                                        // 2️⃣ Attendance already exists
-                                        if (validation.hasAttendance) {
-                                            SweetAlertUtil.showWarning(
-                                                context,
-                                                "Already Recorded",
-                                                "This CI/intern already has attendance for this slot."
-                                            )
-                                            return@launch
-                                        }
-
-                                        // 3️⃣ Ask confirmation before posting attendance
-                                        SweetAlertUtil.showConfirm(
-                                            context,
-                                            "Confirm Attendance",
-                                            "Do you want to record attendance for this intern?",
-                                            confirmText = "Yes",
-                                            cancelText = "No"
-                                        ) {
-
-                                            val attendanceRequest =
-                                                AttendanceRequest(slotId, scannedUserId)
-                                            Log.d(
-                                                "ScheduleFragment_INFO",
-                                                "Saving ... $attendanceRequest"
-                                            )
-                                            CoroutineScope(Dispatchers.Main).launch {
-                                                // 4️⃣ POST attendance
-                                                try {
-                                                    val postResponse =
-                                                        RetrofitClient.create(context)
-                                                            .postAttendance(attendanceRequest)
-
-                                                    if (postResponse.isSuccessful) {
-
-                                                        SweetAlertUtil.showSuccess(
-                                                            context,
-                                                            "Success",
-                                                            "Attendance recorded successfully."
-                                                        )
-
-                                                    } else {
-
-                                                        val errorBody =
-                                                            postResponse.errorBody()?.string()
-                                                        val gson = Gson()
-
-                                                        val apiError = try {
-                                                            gson.fromJson(
-                                                                errorBody,
-                                                                ApiErrorResponse::class.java
-                                                            )
-                                                        } catch (e: Exception) {
-                                                            null
-                                                        }
-
-                                                        when (postResponse.code()) {
-
-                                                            404 -> {
-                                                                SweetAlertUtil.showWarning(
-                                                                    context,
-                                                                    "Not Found",
-                                                                    apiError?.message
-                                                                        ?: "No record found."
-                                                                )
-                                                            }
-
-                                                            400 -> {
-                                                                SweetAlertUtil.showWarning(
-                                                                    context,
-                                                                    "Not Allowed",
-                                                                    apiError?.message
-                                                                        ?: "Bad request."
-                                                                )
-                                                            }
-
-                                                            409 -> {
-                                                                SweetAlertUtil.showWarning(
-                                                                    context,
-                                                                    "Duplicate",
-                                                                    apiError?.message
-                                                                        ?: "Attendance already exists."
-                                                                )
-                                                            }
-
-                                                            else -> {
-                                                                SweetAlertUtil.showError(
-                                                                    context,
-                                                                    "Error ${postResponse.code()}",
-                                                                    apiError?.message
-                                                                        ?: "Something went wrong."
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-
-                                                } catch (e: Exception) {
-                                                    Log.d(
-                                                        "ScheduleFragment_INFO",
-                                                        "Error validating attendance",
-                                                        e
-                                                    )
-                                                    SweetAlertUtil.showError(
-                                                        context,
-                                                        "Network Error",
-                                                        e.localizedMessage ?: "Something went wrong"
-                                                    )
-                                                }
-                                            }
-                                        }
-
-
                                     } catch (e: Exception) {
                                         Log.d(
                                             "ScheduleFragment_INFO",
-                                            "Error validating attendance",
+                                            "Error handling scanned attendance",
                                             e
                                         )
                                         SweetAlertUtil.showError(
                                             context,
-                                            "Network Error",
+                                            "Error",
                                             e.localizedMessage ?: "Something went wrong"
                                         )
                                     } finally {
@@ -1399,6 +1274,232 @@ class ScheduleAdapter(
             )
 
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    // =========================================================
+    // ONLINE SCAN — unchanged server flow, plus a write-through
+    // to the Room cache so offline data stays consistent.
+    // =========================================================
+
+    private suspend fun handleOnlineScan(scannedUserId: String, slotId: String) {
+        Toast.makeText(context, "Scanning...", Toast.LENGTH_SHORT).show()
+
+        // 1️⃣ Validate attendance against the server
+        val validateResponse = RetrofitClient.create(context)
+            .validateAttendance(scannedUserId, slotId)
+
+        if (!validateResponse.isSuccessful || validateResponse.body() == null) {
+            SweetAlertUtil.showError(
+                context,
+                "Error",
+                validateResponse.message() ?: "Either Attendant is not found!"
+            )
+            return
+        }
+
+        val validation = validateResponse.body()!!
+
+        // 2️⃣ Attendance already exists
+        if (validation.hasAttendance) {
+            SweetAlertUtil.showWarning(
+                context,
+                "Already Recorded",
+                "This CI/intern already has attendance for this slot."
+            )
+            return
+        }
+
+        // 3️⃣ Ask confirmation before posting attendance
+        SweetAlertUtil.showConfirm(
+            context,
+            "Confirm Attendance",
+            "Do you want to record attendance for this intern?",
+            confirmText = "Yes",
+            cancelText = "No"
+        ) {
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    // 4️⃣ POST attendance to the server
+                    val attendanceRequest = AttendanceRequest(slotId, scannedUserId)
+                    val postResponse = RetrofitClient.create(context)
+                        .postAttendance(attendanceRequest)
+
+                    if (postResponse.isSuccessful) {
+
+                        // Write-through to Room so the offline cache matches
+                        // the server (attID is returned on success).
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val attId = postResponse.body()?.attID
+                                    ?: "SERVER-${slotId}-$scannedUserId"
+
+                                SapaDatabase.getInstance(context).attendanceDao().upsertAll(
+                                    listOf(
+                                        AttendanceEntity(
+                                            attID = attId,
+                                            slotID = slotId,
+                                            userID = scannedUserId,
+                                            status = 1,
+                                            dateCreated = null,
+                                            dateUpdated = null
+                                        )
+                                    )
+                                )
+
+                                // CI scan write-through: the server flips
+                                // Slots.isCIPresent — mirror it locally so a
+                                // later OFFLINE intern scan passes the
+                                // "CI must scan first" rule. Without this the
+                                // stale local flag (0) blocks offline scans.
+                                SapaDatabase.getInstance(context).slotDao()
+                                    .getById(slotId)
+                                    ?.let { slot ->
+                                        val isThisCI = scannedUserId == slot.CIID ||
+                                                SapaDatabase.getInstance(context)
+                                                    .appointedStudentDao()
+                                                    .getBySlotAndUser(slotId, scannedUserId)
+                                                    ?.roleID == "UGR0006"
+
+                                        if (isThisCI && slot.isCIPresent != 1) {
+                                            SapaDatabase.getInstance(context).slotDao()
+                                                .upsertAll(
+                                                    listOf(slot.copy(isCIPresent = 1))
+                                                )
+                                        }
+                                    }
+                            } catch (e: Exception) {
+                                Log.e("ScheduleAdapter", "Cache write-through failed", e)
+                            }
+                        }
+
+                        SweetAlertUtil.showSuccess(
+                            context,
+                            "Success",
+                            "Attendance recorded successfully."
+                        )
+
+                    } else {
+                        val errorBody = postResponse.errorBody()?.string()
+                        val apiError = try {
+                            Gson().fromJson(errorBody, ApiErrorResponse::class.java)
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        when (postResponse.code()) {
+                            404 -> {
+                                SweetAlertUtil.showWarning(
+                                    context, "Not Found", apiError?.message ?: "No record found."
+                                )
+                                Log.d("ScheduleFragment_INFO",
+                                    ("No record found 404: " + apiError?.message)
+                                )
+                            }
+
+                            400 -> {
+                                SweetAlertUtil.showWarning(
+                                    context, "Not Allowed", apiError?.message ?: "Bad request."
+                                )
+                                Log.d("ScheduleFragment_INFO",
+                                    ("Bad request 400: " + apiError?.message)
+                                )
+                            }
+
+                            409 -> {
+                                SweetAlertUtil.showWarning(
+                                    context,
+                                    "Duplicate",
+                                    apiError?.message ?: "Attendance already exists."
+                                )
+                                Log.d("ScheduleFragment_INFO",
+                                    ("Attendance already exists. 409: " + apiError?.message)
+                                )
+                            }
+
+                            else -> {
+                                SweetAlertUtil.showError(
+                                    context, "Error ${postResponse.code()}",
+                                    apiError?.message ?: "Something went wrong."
+                                )
+                                Log.d("ScheduleFragment_INFO",
+                                    ("Error ${postResponse.code()}: " + apiError?.message)
+                                )
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.d("ScheduleFragment_INFO", "Error posting attendance", e)
+                    SweetAlertUtil.showError(
+                        context,
+                        "Network Error",
+                        e.localizedMessage ?: "Something went wrong"
+                    )
+                }
+            }
+        }
+    }
+
+    // =========================================================
+    // OFFLINE SCAN — validates against the Room cache, queues
+    // the record, and lets AttendanceUploadWorker upload it when
+    // the device reconnects.
+    // =========================================================
+
+    private suspend fun handleOfflineScan(scannedUserId: String, slotId: String) {
+        val repository = AttendanceQueueRepository(context)
+
+        // 1️⃣ Mirror the server's validation rules against cached data
+        val validation = repository.validateOffline(slotId, scannedUserId)
+
+        if (!validation.ok) {
+            SweetAlertUtil.showWarning(
+                context,
+                if (validation.reason?.startsWith("This intern already") == true)
+                    "Already Recorded" else "Not Allowed",
+                validation.reason ?: "Cannot record attendance offline."
+            )
+            return
+        }
+
+        // 2️⃣ Ask confirmation — user is told this will upload automatically
+        SweetAlertUtil.showConfirm(
+            context,
+            "Offline Scan",
+            "You are offline. Attendance will be saved on this device and " +
+                    "uploaded automatically when you reconnect.\n\nRecord attendance now?",
+            confirmText = "Yes",
+            cancelText = "No"
+        ) {
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    // 3️⃣ Queue + write-through local cache. scannedRole comes
+                    // from validateOffline ('C' = CI, 'I' = intern) so the
+                    // isCIPresent write-through works without a users lookup.
+                    repository.recordOffline(
+                        slotId,
+                        scannedUserId,
+                        isCI = validation.scannedRole == 'C'
+                    )
+
+                    val pending = SapaDatabase.getInstance(context)
+                        .attendanceQueueDao().pendingCount()
+
+                    SweetAlertUtil.showSuccess(
+                        context,
+                        "Saved Offline",
+                        "Attendance recorded on this device.\n" +
+                                "$pending record(s) waiting to upload."
+                    )
+                } catch (e: Exception) {
+                    Log.e("ScheduleAdapter", "Failed to queue offline attendance", e)
+                    SweetAlertUtil.showError(
+                        context,
+                        "Error",
+                        "Could not save attendance locally.\n${e.localizedMessage ?: ""}"
+                    )
+                }
+            }
+        }
     }
 
     suspend fun SessionManager.getSettingValue(key: String): String? {

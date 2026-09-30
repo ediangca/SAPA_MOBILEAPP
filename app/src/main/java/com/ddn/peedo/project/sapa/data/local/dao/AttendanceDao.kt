@@ -14,6 +14,9 @@ interface AttendanceDao {
         attendance: List<AttendanceEntity>
     )
 
+    @Query("SELECT * FROM attendance")
+    suspend fun getAllOnce(): List<AttendanceEntity>
+
     @Query("""
         SELECT EXISTS(
             SELECT 1
@@ -58,4 +61,18 @@ interface AttendanceDao {
     suspend fun deleteNotInSlots(
         slotIds: List<String>
     )
+
+    /**
+     * Count of replicated (server) attendance records — excludes the LOCAL-*
+     * pseudo-records written for offline scans still queued for upload.
+     */
+    @Query("SELECT COUNT(*) FROM attendance WHERE attID NOT LIKE 'LOCAL-%'")
+    suspend fun countRealAttendance(): Int
+
+    /**
+     * Attendance count for one person (includes LOCAL-* offline scans so
+     * the user-detail sheet reflects what the device has recorded).
+     */
+    @Query("SELECT COUNT(*) FROM attendance WHERE userID = :userId")
+    suspend fun countByUser(userId: String): Int
 }

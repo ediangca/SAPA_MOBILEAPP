@@ -1,9 +1,11 @@
 package com.ddn.peedo.project.sapa.ui.dashboard.ui.users
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.util.Log
 import android.view.View
+import android.widget.TextView
 import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -12,15 +14,25 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.ddn.peedo.project.sapa.R
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.local.entity.UserEntity
+import com.ddn.peedo.project.sapa.data.repository.OfflineSyncManager
 import com.ddn.peedo.project.sapa.databinding.FragmentUserBinding
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.services.ApiService
 import com.ddn.peedo.project.sapa.utils.UserStatusUtil
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.UnknownHostException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.core.widget.addTextChangedListener
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.util.UserRoleUtil
@@ -40,6 +52,7 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
     private var currentUserId: String? = null
     private var currentUserRoleId: String? = null
     private var currentUserSchoolId: String? = null
+    private var currentUserCoorSchoolId: String? = null
     private val statusFilters =
         listOf("All", "Unverified", "Pending", "Approved", "Suspended", "Inactive")
 
@@ -68,6 +81,8 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         setupSearch()
         setupFilterToggle()
         setupSwipeRefresh()
+
+        binding.btnOfflineRetry.setOnClickListener { loadUsers() }
 
         loadUsers()
     }
@@ -165,11 +180,18 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                 currentUserId = sessionUser?.optString("userID")?.takeIf { it.isNotBlank() }
                 currentUserRoleId = sessionUser?.optString("roleID")?.takeIf { it.isNotBlank() }
                 currentUserSchoolId = sessionUser?.optString("schoolID")?.takeIf { it.isNotBlank() }
+                currentUserCoorSchoolId =
+                    sessionUser?.optString("coorSchoolID")?.takeIf { it.isNotBlank() }
 
                 Log.d(
                     "UsersFragment", "currentUserId=$currentUserId, " +
-                            "currentUserRoleId=$currentUserRoleId, currentUserSchoolId=$currentUserSchoolId"
+                            "currentUserRoleId=$currentUserRoleId, currentUserSchoolId=$currentUserSchoolId, " +
+                            "currentUserCoorSchoolId=$currentUserCoorSchoolId"
                 )
+
+                // Coordinators and CIs get a view-only directory — no
+                // Approve / Resend Verification actions.
+                adapter.setReadOnly(isViewOnlyDirectory())
 
                 val response = api.getUsers()
 
@@ -202,80 +224,89 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                     setupRoleSpinner(distinctRoles)
 
                     applyFilters()
-//                    applyFilter(statusFilters[binding.spinnerStatus.selectedItemPosition])
+                    hideLoading()
                 } else {
                     val errorBody = response.errorBody()?.string()
                     Log.e(
                         "UsersFragment",
                         "getUsers() failed: code=${response.code()}, body=$errorBody"
                     )
-                    showEmptyState()
-//                    SweetAlertUtil.showError(
-//                        requireContext(),
-//                        "Failed to Load Users",
-//                        "Server returned an error (code ${response.code()})."
-//                    )
+                    showOfflineDirectory("Couldn't reach the server — showing cached directory")
                 }
-
-                hideLoading()
-//            } catch (e: UnknownHostException) {
-//                Log.e("UsersFragment", "No internet connection", e)
-//                hideLoading()
-//                binding.swipeRefresh.isRefreshing = false
-//                showNoInternetState()
             } catch (e: Exception) {
                 Log.d("UsersFragment", "Error: " + e.message)
-                hideLoading()
                 binding.swipeRefresh.isRefreshing = false
-                showNoInternetState()
+                showOfflineDirectory("Offline — showing cached directory")
             }
         }
     }
 
     /**
-     * System Admin / Admin -> sees every user, no restrictions.
-     * School Coordinator (and anyone else school-scoped) -> only sees users
-     * belonging to their own school, and only within Coordinator/Instructor/Student roles.
+     * Who sees what in the Users directory:
+     *  - System Admin / SAP Admin -> every user, no restrictions.
+     *  - School Coordinator (UGR0003) -> CIs + students belonging to their
+     *    school, combined into one list.
+     *  - Clinical Instructor (UGR0006) -> students belonging to their school.
+     *  - Any other role -> no access (empty list).
      */
     private fun scopeUsersByRole(users: List<VwUser>): List<VwUser> {
         val roleId = currentUserRoleId
 
-        val roleScoped = when {
-            roleId == null -> {
-                Log.e("UsersFragment", "scopeUsersByRole: roleId is null, returning empty list")
-                emptyList()
-            }
-
-            roleId in UserRoleUtil.adminTierRoles -> {
-                Log.d(
-                    "UsersFragment",
-                    "scopeUsersByRole: admin-tier role ($roleId), showing all users"
-                )
-                users
-            }
-
-            else -> {
-                val schoolId = currentUserSchoolId
-                if (schoolId.isNullOrBlank()) {
-                    Log.e(
-                        "UsersFragment",
-                        "scopeUsersByRole: non-admin role ($roleId) but schoolId is null/blank, returning empty list"
-                    )
-                    emptyList()
-                } else {
-                    val filtered = users.filter { user ->
-                        user.roleID in UserRoleUtil.schoolScopedRoles && user.schoolID == schoolId
-                    }
-                    Log.d(
-                        "UsersFragment",
-                        "scopeUsersByRole: school-scoped role ($roleId), schoolId=$schoolId, matched ${filtered.size}/${users.size}"
-                    )
-                    filtered
-                }
-            }
+        if (roleId == null) {
+            Log.e("UsersFragment", "scopeUsersByRole: roleId is null, returning empty list")
+            return emptyList()
         }
 
-        return roleScoped.filter { it.userID != currentUserId }
+        // ---------------- Admin tier: full directory ----------------
+        if (roleId == UserRoleUtil.SYSTEM_ADMIN ||
+            roleId == UserRoleUtil.ADMIN ||
+            roleId == UserRoleUtil.SAP_ADMIN
+        ) {
+            Log.d(
+                "UsersFragment",
+                "scopeUsersByRole: admin-tier role ($roleId), showing all users"
+            )
+            return users.filter { it.userID != currentUserId }
+        }
+
+        // -------- Coordinator / CI: role + school scoped view --------
+        val visibleRoles = UserRoleUtil.usersDirectoryVisibleRoles[roleId]
+        if (visibleRoles == null) {
+            Log.w(
+                "UsersFragment",
+                "scopeUsersByRole: role ($roleId) has no Users directory access, returning empty list"
+            )
+            return emptyList()
+        }
+
+        // School scope: the session schoolID. Coordinators may alternatively
+        // be linked to their school through coorSchoolID, so both are
+        // accepted when present.
+        val scopedSchoolIds = buildList {
+            currentUserSchoolId?.let { add(it) }
+            if (roleId == UserRoleUtil.SCHOOL_COORDINATOR) {
+                currentUserCoorSchoolId?.let { add(it) }
+            }
+        }.distinct()
+
+        if (scopedSchoolIds.isEmpty()) {
+            Log.e(
+                "UsersFragment",
+                "scopeUsersByRole: $roleId has no school scope in session, returning empty list"
+            )
+            return emptyList()
+        }
+
+        val filtered = users.filter { user ->
+            user.roleID in visibleRoles && user.schoolID in scopedSchoolIds
+        }
+        Log.d(
+            "UsersFragment",
+            "scopeUsersByRole: $roleId, schools=$scopedSchoolIds, " +
+                    "visibleRoles=$visibleRoles, matched ${filtered.size}/${users.size}"
+        )
+
+        return filtered.filter { it.userID != currentUserId }
     }
 
 
@@ -313,6 +344,177 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         }
     }
 
+    // ---------- View-only directory (Coordinator / CI) ----------
+
+    private fun isViewOnlyDirectory(): Boolean {
+        val roleId = currentUserRoleId ?: return true
+        return roleId == UserRoleUtil.SCHOOL_COORDINATOR ||
+                roleId == UserRoleUtil.CLINICAL_INSTRUCTOR
+    }
+
+    // ---------- OFFLINE FALLBACK (Room users replica) ----------
+
+    /**
+     * Shows the directory from the offline replica replicated by
+     * OfflineSyncManager, with the same offline-banner pattern as the
+     * Schedules tab. Applied role/school scoping keeps every role's view
+     * identical online and offline.
+     */
+    private fun showOfflineDirectory(message: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = SapaDatabase.getInstance(requireContext())
+
+                val scoped = scopeUsersByRole(db.userDao().getAllOnce().map { it.toVwUser() })
+
+                val lastSyncedAt = db.syncMetaDao().get(OfflineSyncManager.USERS_MODULE_NAME)
+                    ?.lastSyncedAt
+                        ?: db.syncMetaDao().get(OfflineSyncManager.SCHOOLS_MODULE_NAME)
+                            ?.lastSyncedAt
+                        ?: OfflineSyncManager.lastSyncTime(requireContext())
+
+                withContext(Dispatchers.Main) {
+                    if (_binding == null) return@withContext
+
+                    binding.offlineBanner.visibility = View.VISIBLE
+                    binding.offlineBannerText.text = if (lastSyncedAt > 0) {
+                        "$message (synced ${sdfSynced.format(Date(lastSyncedAt))})"
+                    } else {
+                        message
+                    }
+
+                    if (scoped.isEmpty()) {
+                        showNoInternetState()
+                    } else {
+                        allUsers = scoped
+                        setupRoleSpinner(
+                            scoped.filter { it.roleID !in excludedRoleIds }
+                                .map { it.rolename }
+                                .distinct()
+                                .sorted()
+                        )
+                        applyFilters()
+                    }
+
+                    hideLoading()
+                }
+            } catch (e: Exception) {
+                Log.e("UsersFragment", "Offline directory fallback failed", e)
+                withContext(Dispatchers.Main) {
+                    if (_binding != null) {
+                        hideLoading()
+                        showNoInternetState()
+                    }
+                }
+            }
+        }
+    }
+
+    /** Room → API model. Mirrors the mapper used by SchoolFragment. */
+    private fun UserEntity.toVwUser() = VwUser(
+        userID = userID,
+        username = username,
+        password = "",
+        lastname = lastname,
+        firstname = firstname,
+        middlename = middlename,
+        fullname = fullname,
+        email = email,
+        emailVerifiedAt = null,
+        roleID = roleID,
+        rolename = rolename,
+        schoolID = schoolID,
+        schoolName = schoolName,
+        status = status,
+        coorSchoolID = coorSchoolID,
+        coorSchoolCode = coorSchoolCode,
+        coorSchoolName = coorSchoolName,
+        hospitalID = hospitalID,
+        hospitalName = hospitalName,
+        dateCreated = dateCreated,
+        dateUpdated = dateUpdated
+    )
+
+    // ---------- USER DETAIL BOTTOM SHEET ----------
+
+    private val sdfSynced = SimpleDateFormat("MMM dd, h:mm a", Locale.ENGLISH)
+    private val sdfMemberSince = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
+
+    private fun showUserDetail(user: VwUser) {
+        val sheet = layoutInflater.inflate(R.layout.sheet_user_detail, null)
+
+        sheet.findViewById<TextView>(R.id.txtName).text = user.fullname
+        sheet.findViewById<TextView>(R.id.txtRole).text =
+            user.rolename.ifBlank { user.roleID }
+        sheet.findViewById<TextView>(R.id.txtEmail).text = user.email
+        sheet.findViewById<TextView>(R.id.txtSchool).text =
+            user.schoolName ?: "No school assigned"
+
+        val statusView = sheet.findViewById<TextView>(R.id.txtStatus)
+        statusView.text = UserStatusUtil.label(user.status)
+        statusView.background.setTint(statusColor(user.status))
+
+        val hospitalRow = sheet.findViewById<View>(R.id.hospitalRow)
+        if (user.hospitalName.isNullOrBlank()) {
+            hospitalRow.visibility = View.GONE
+        } else {
+            hospitalRow.visibility = View.VISIBLE
+            sheet.findViewById<TextView>(R.id.txtHospital).text = user.hospitalName
+        }
+
+        sheet.findViewById<TextView>(R.id.txtMemberSince).text =
+            parseMemberSince(user.dateCreated)
+
+        // Offline activity summary — a view-only reference, not an audit:
+        // counts come from the cached replica and include LOCAL-* offline
+        // scans, so a coordinator can see records still queued for upload.
+        lifecycleScope.launch {
+            val counts = withContext(Dispatchers.IO) {
+                val db = SapaDatabase.getInstance(requireContext())
+                Triple(
+                    db.appointedStudentDao().countByUser(user.userID),
+                    db.attendanceDao().countByUser(user.userID),
+                    db.slotDao().countByCI(user.userID)
+                )
+            }
+
+            if (_binding == null) return@launch
+
+            sheet.findViewById<TextView>(R.id.txtAppointments).text =
+                counts.first.toString()
+            sheet.findViewById<TextView>(R.id.txtAttendance).text =
+                counts.second.toString()
+
+            val ciText = sheet.findViewById<TextView>(R.id.txtCiSlots)
+            if (counts.third > 0) {
+                ciText.visibility = View.VISIBLE
+                ciText.text = "CI for ${counts.third} schedule(s)"
+            }
+        }
+
+        BottomSheetDialog(requireContext()).apply {
+            setContentView(sheet)
+            show()
+        }
+    }
+
+    private fun parseMemberSince(dateCreated: String): String = try {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH).parse(dateCreated)?.let {
+            sdfMemberSince.format(it)
+        } ?: dateCreated
+    } catch (e: Exception) {
+        dateCreated
+    }
+
+    private fun statusColor(status: Char?): Int = when (status) {
+        UserStatusUtil.APPROVED -> Color.parseColor("#003366")   // primary
+        UserStatusUtil.PENDING -> Color.parseColor("#F0A500")    // amber
+        UserStatusUtil.UNVERIFIED -> Color.parseColor("#607D8B") // blue-grey
+        UserStatusUtil.SUSPENDED -> Color.parseColor("#C62828")  // red
+        UserStatusUtil.INACTIVE -> Color.parseColor("#9E9E9E")   // grey
+        else -> Color.GRAY
+    }
+
     // ---------- UserAdapter.UserActionListener ----------
 
     override fun onApprove(user: VwUser) {
@@ -337,6 +539,10 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         ) {
             resendVerification(user)
         }
+    }
+
+    override fun onItemClick(user: VwUser) {
+        showUserDetail(user)
     }
 
     private fun approveUser(user: VwUser) {

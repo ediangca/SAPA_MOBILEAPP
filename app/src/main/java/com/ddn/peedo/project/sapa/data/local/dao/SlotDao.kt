@@ -20,6 +20,10 @@ interface SlotDao {
     @Query("SELECT * FROM slots WHERE slotID = :slotId LIMIT 1")
     suspend fun getById(slotId: String): SlotEntity?
 
+    /** Schedules where this person is the assigned CI. */
+    @Query("SELECT COUNT(*) FROM slots WHERE CIID = :ciId")
+    suspend fun countByCI(ciId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(slots: List<SlotEntity>)
 

@@ -9,6 +9,9 @@ interface SchoolDao {
     @Query("SELECT * FROM schools")
     fun observeAll(): Flow<List<SchoolEntity>>
 
+    @Query("SELECT * FROM schools")
+    suspend fun getAllOnce(): List<SchoolEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(schools: List<SchoolEntity>)
 

@@ -50,6 +50,64 @@
             android:textColor="@color/primary"
             android:textSize="24sp" />
 
+        <!-- BACKGROUND REPLICATION / SYNC PROGRESS BANNER (blue, hidden when idle) -->
+        <LinearLayout
+            android:id="@+id/syncProgressBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginTop="6dp"
+            android:background="@color/secondary"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:paddingVertical="6dp"
+            android:paddingHorizontal="14dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ProgressBar
+                    android:id="@+id/syncSpinner"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginEnd="8dp"
+                    android:indeterminateTint="@color/white"
+                    android:indeterminate="true" />
+
+                <TextView
+                    android:id="@+id/syncProgressText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Syncing… 0%"
+                    android:textColor="@color/white"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/syncProgressCounts"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/syncProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="@color/white"
+                android:progressBackgroundTint="#33FFFFFF" />
+        </LinearLayout>
 
     </com.google.android.material.appbar.AppBarLayout>
 

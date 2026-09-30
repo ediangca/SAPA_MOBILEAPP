@@ -9,11 +9,17 @@ interface AppointedStudentDao {
     @Query("SELECT * FROM appointed_students WHERE slotID = :slotId")
     fun observeBySlot(slotId: String): Flow<List<AppointedStudentEntity>>
 
+    @Query("SELECT * FROM appointed_students")
+    suspend fun getAllOnce(): List<AppointedStudentEntity>
+
     @Query("SELECT * FROM appointed_students WHERE slotID = :slotId AND userID = :userId LIMIT 1")
     suspend fun getBySlotAndUser(slotId: String, userId: String): AppointedStudentEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(students: List<AppointedStudentEntity>)
+
+    @Query("SELECT COUNT(*) FROM appointed_students WHERE userID = :userId")
+    suspend fun countByUser(userId: String): Int
 
     @Query("DELETE FROM appointed_students")
     suspend fun clear()

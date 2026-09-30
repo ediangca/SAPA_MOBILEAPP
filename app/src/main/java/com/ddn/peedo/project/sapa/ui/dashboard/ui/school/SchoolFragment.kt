@@ -15,6 +15,8 @@ import android.widget.ArrayAdapter
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModelProvider
 import com.ddn.peedo.project.sapa.databinding.FragmentSchoolBinding
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.local.entity.UserEntity
 import com.ddn.peedo.project.sapa.model.School
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.lifecycle.lifecycleScope
@@ -28,8 +30,10 @@ import android.view.MotionEvent
 import androidx.core.widget.addTextChangedListener
 import com.ddn.peedo.project.sapa.adapter.StudentAdapter
 import com.ddn.peedo.project.sapa.model.VwUser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 
 class SchoolFragment : Fragment() {
@@ -161,14 +165,8 @@ class SchoolFragment : Fragment() {
                     )
                     updateEmptyState(list)
                 } else {
-                    showEmptyState()
-                    Log.d(
-                        "SchoolFragment_INFO",
-                        "Error: " + response.message()
-                    )
                     hideLoading()
-                    binding.swipeRefresh.isRefreshing = false
-                    showNoInternetState()
+                    showCachedSchools()
                 }
                 hideLoading()
 
@@ -179,9 +177,45 @@ class SchoolFragment : Fragment() {
                 )
                 hideLoading()
                 binding.swipeRefresh.isRefreshing = false
-                showNoInternetState()
+                showCachedSchools()
             }
         }
+    }
+
+    /**
+     * Offline fallback: read the school list replicated into Room by
+     * OfflineSyncManager. Shows the no-internet state only when nothing
+     * has ever been cached.
+     */
+    private suspend fun showCachedSchools() {
+        val cached = withContext(Dispatchers.IO) {
+            SapaDatabase.getInstance(requireContext())
+                .schoolDao().getAllOnce()
+        }
+
+        if (cached.isEmpty()) {
+            showNoInternetState()
+            return
+        }
+
+        list = ArrayList(
+            cached.map {
+                School(
+                    schoolID = it.schoolID,
+                    schoolName = it.schoolName,
+                    address = it.address,
+                    userID = it.userID,
+                    createdBy = it.createdBy,
+                    status = it.status,
+                    code = it.code,
+                    dateCreated = it.dateCreated,
+                    dateUpdated = it.dateUpdated
+                )
+            }
+        )
+
+        adapter.updateData(list)
+        updateEmptyState(list)
     }
 
     @SuppressLint("NotifyDataSetChanged")
@@ -311,26 +345,47 @@ class SchoolFragment : Fragment() {
                     return@launch
                 }
 
-                val response = api.getStudentsBySchoolID(schoolID)
+                var handled = false
 
-                if (!dialog.isShowing) return@launch
+                try {
+                    val response = api.getStudentsBySchoolID(schoolID)
 
-                if (response.isSuccessful && response.body() != null) {
-                    val fetchedStudents = response.body()!!
-                    currentSchoolStudents = fetchedStudents
+                    if (!dialog.isShowing) return@launch
 
-                    if (fetchedStudents.isEmpty()) {
+                    if (response.isSuccessful && response.body() != null) {
+                        val fetchedStudents = response.body()!!
+                        currentSchoolStudents = fetchedStudents
+
+                        if (fetchedStudents.isEmpty()) {
+                            showDialogEmpty(dialogBinding)
+                        } else {
+                            studentAdapter.updateData(fetchedStudents)
+                            showDialogList(dialogBinding)
+                        }
+                        handled = true
+                    }
+                } catch (e: Exception) {
+                    Log.e("SchoolFragment_INFO", "Students fetch failed — trying cache", e)
+                }
+
+                // OFFLINE FALLBACK — students of this school from the
+                // replicated users directory (OfflineSyncManager phase 5)
+                if (!handled && dialog.isShowing) {
+                    val cachedStudents = withContext(Dispatchers.IO) {
+                        SapaDatabase.getInstance(requireContext())
+                            .userDao().getAllOnce()
+                    }
+                        .filter { it.schoolID == school.schoolID }
+                        .map { it.toVwUser() }
+
+                    currentSchoolStudents = cachedStudents
+
+                    if (cachedStudents.isEmpty()) {
                         showDialogEmpty(dialogBinding)
                     } else {
-                        studentAdapter.updateData(fetchedStudents)
+                        studentAdapter.updateData(cachedStudents)
                         showDialogList(dialogBinding)
                     }
-                } else {
-                    Log.e(
-                        "SchoolFragment_INFO",
-                        "Failed to fetch students for school ${school.schoolID}"
-                    )
-                    showDialogEmpty(dialogBinding)
                 }
             } catch (e: Exception) {
                 Log.e("SchoolFragment_INFO", "Error loading students dialog", e)
@@ -500,5 +555,31 @@ class SchoolFragment : Fragment() {
         }
     }
 
-
+    /**
+     * Room cache → UI model. The users directory is replicated (merge-only)
+     * by OfflineSyncManager, so the student dialog works offline.
+     */
+    private fun UserEntity.toVwUser() = VwUser(
+        userID = userID,
+        username = username,
+        password = "",
+        lastname = lastname,
+        firstname = firstname,
+        middlename = middlename,
+        fullname = fullname,
+        email = email,
+        emailVerifiedAt = null,
+        roleID = roleID,
+        rolename = rolename,
+        schoolID = schoolID,
+        schoolName = schoolName,
+        status = status,
+        coorSchoolID = coorSchoolID,
+        coorSchoolCode = coorSchoolCode,
+        coorSchoolName = coorSchoolName,
+        hospitalID = hospitalID,
+        hospitalName = hospitalName,
+        dateCreated = dateCreated ?: "",
+        dateUpdated = dateUpdated ?: ""
+    )
 }

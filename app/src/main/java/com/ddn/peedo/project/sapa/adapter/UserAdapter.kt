@@ -11,9 +11,20 @@ import com.ddn.peedo.project.sapa.databinding.ItemUserBinding
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.utils.UserStatusUtil
 
+/**
+ * @param readOnly when true the Approve / Resend Verification actions are
+ * hidden — used for the view-only directory shown to School Coordinators
+ * and Clinical Instructors (admins keep full control).
+ */
 class UserAdapter(
-    private val listener: UserActionListener
+    private val listener: UserActionListener,
+    private var readOnly: Boolean = false
 ) : ListAdapter<VwUser, UserAdapter.UserViewHolder>(DIFF_CALLBACK) {
+
+    /** Toggles the action buttons (applies on the next bind). */
+    fun setReadOnly(value: Boolean) {
+        readOnly = value
+    }
 
     interface UserActionListener {
         fun onApprove(user: VwUser)
@@ -56,14 +67,14 @@ class UserAdapter(
             val isApprovable = user.status == UserStatusUtil.PENDING
 
             binding.actionProgress.isVisible = isLoading
-            binding.reverification.isVisible = isUnverified && !isLoading
-            binding.approve.isVisible = isApprovable && !isLoading
+            binding.reverification.isVisible = !readOnly && isUnverified && !isLoading
+            binding.approve.isVisible = !readOnly && isApprovable && !isLoading
 
             binding.reverification.setOnClickListener {
-                if (isUnverified && !isLoading) listener.onResendVerification(user)
+                if (!readOnly && isUnverified && !isLoading) listener.onResendVerification(user)
             }
             binding.approve.setOnClickListener {
-                if (isApprovable && !isLoading) listener.onApprove(user)
+                if (!readOnly && isApprovable && !isLoading) listener.onApprove(user)
             }
 
             binding.root.setOnClickListener { listener.onItemClick(user) }

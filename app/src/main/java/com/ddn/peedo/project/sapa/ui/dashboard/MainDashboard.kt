@@ -2,7 +2,12 @@ package com.ddn.peedo.project.sapa.ui.dashboard
 
 import android.Manifest
 import android.app.Dialog
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.media.SoundPool
 import android.os.Bundle
 import android.os.Handler
@@ -24,10 +29,11 @@ import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.adapter.RecentScheduleAdapter
-import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.repository.OfflineSyncManager
 import com.ddn.peedo.project.sapa.databinding.ActivityMainDashboardBinding
 import com.ddn.peedo.project.sapa.databinding.DialogAboutAppBinding
 import com.ddn.peedo.project.sapa.databinding.DialogScanQrBinding
+import com.ddn.peedo.project.sapa.work.AttendanceUploadWorker
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.services.QRCodeAnalyzer
 import com.ddn.peedo.project.sapa.store.SessionManager
@@ -71,13 +77,20 @@ class MainDashboard : AppCompatActivity() {
 
         onInit()
 
-        // TEMP: verify local DB creation — remove after confirming
-        lifecycleScope.launch {
-            val db = SapaDatabase.getInstance(this@MainDashboard)
-            val userCount = db.userDao().getAllOnce().size
-            Log.d("SapaDatabase", "DB ready. Users cached: $userCount")
-            Log.d("SapaDatabase", "DB file path: ${getDatabasePath("sapa_local.db").absolutePath}")
-        }
+        // Keep the offline attendance queue draining in the background
+        AttendanceUploadWorker.schedulePeriodicUpload(this)
+
+        // AUTO BACKGROUND REPLICATION: while online, silently refresh the
+        // local copy of schedules + appointed interns + attendance so offline
+        // QR scanning always has current data. Progress appears as a blue
+        // banner on Home/Schedules. The periodic upload worker keeps
+        // draining the offline scan queue.
+        OfflineSyncManager.startAutoSync(this)
+
+        // NETWORK RECONNECT TRIGGER: the moment connectivity returns, force a
+        // replication (fresh data) and flush the offline scan queue — no
+        // waiting for app re-open or the 15-min worker tick.
+        registerNetworkCallback()
 
 
         val session = SessionManager(this)
@@ -94,6 +107,34 @@ class MainDashboard : AppCompatActivity() {
         }
 
 
+    }
+
+    /**
+     * Fires whenever the device regains connectivity while the app is alive:
+     * force-replicates fresh data and drains the pending offline uploads.
+     */
+    private fun registerNetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                Log.d("MainDashboard", "Network available → syncing + uploading")
+                OfflineSyncManager.startAutoSync(this@MainDashboard, force = true)
+                AttendanceUploadWorker.enqueueOneTimeFlush(this@MainDashboard)
+            }
+        }
+
+        try {
+            // NET_CAPABILITY_VALIDATED avoids firing on captive portals /
+            // networks that are connected but have no real internet.
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                .build()
+            cm.registerNetworkCallback(request, callback)
+        } catch (e: Exception) {
+            Log.e("MainDashboard", "Could not register network callback", e)
+        }
     }
 
     private fun onInit() {
@@ -175,12 +216,19 @@ class MainDashboard : AppCompatActivity() {
             "UGR0003" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+                // Users directory visible: sees CIs + students of their school
             }
             //Student
-            "UGR0004" , "UGR0006"-> {
+            "UGR0004" -> {
                 binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
                 binding.mainNav.menu.findItem(R.id.navigation_user)?.isVisible = false
+            }
+            //Clinical Instructor
+            "UGR0006" -> {
+                binding.mainNav.menu.findItem(R.id.navigation_school)?.isVisible = false
+                binding.mainNav.menu.findItem(R.id.navigation_report)?.isVisible = false
+                // Users directory visible: sees students of their school
             }
             //Hospital Supervisor
             "UGR0005" -> {

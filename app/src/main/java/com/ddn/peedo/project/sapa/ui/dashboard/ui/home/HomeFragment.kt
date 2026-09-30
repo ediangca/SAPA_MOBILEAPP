@@ -20,6 +20,9 @@ import com.ddn.peedo.project.sapa.adapter.ScheduleAdapter
 import com.ddn.peedo.project.sapa.databinding.DialogTodayScheduleBinding
 import com.ddn.peedo.project.sapa.databinding.FragmentHomeBinding
 import com.ddn.peedo.project.sapa.dataclass.HospitalScheduleUi
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.repository.OfflineSyncManager
+import com.ddn.peedo.project.sapa.data.repository.toModel
 import com.ddn.peedo.project.sapa.model.DashboardSummary
 import com.ddn.peedo.project.sapa.model.VwSlot
 import com.ddn.peedo.project.sapa.model.VwUser
@@ -27,7 +30,9 @@ import com.ddn.peedo.project.sapa.retrofit.RetrofitClient
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.util.UserRoleUtil
 import com.google.gson.Gson
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -82,8 +87,56 @@ class HomeFragment : Fragment() {
             if (::user.isInitialized) loadDashboard(user) else initComponent()
         }
 
+        initSyncProgressWatcher()
         initComponent()
         initRecycler()
+    }
+
+    // =========================================================
+    // BACKGROUND REPLICATION PROGRESS — same blue banner as the
+    // Schedules tab, shown on Home so the user sees the offline
+    // copy being built before ever entering Schedules.
+    // =========================================================
+
+    private fun initSyncProgressWatcher() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            OfflineSyncManager.progress.collect { p ->
+                when {
+                    p.active -> {
+                        binding.syncProgressBanner.visibility = View.VISIBLE
+                        binding.syncSpinner.visibility = View.VISIBLE
+                        binding.syncProgressBar.visibility = View.VISIBLE
+                        binding.syncProgressText.text =
+                            "${p.phaseLabel} ${p.percent}%"
+                        binding.syncProgressCounts.text =
+                            if (p.phase == OfflineSyncManager.Progress.Phase.STUDENTS)
+                                "${p.studentsDone} / ${p.studentsTotal} schedules"
+                            else ""
+                        binding.syncProgressBar.progress = p.percent
+                    }
+
+                    p.phase == OfflineSyncManager.Progress.Phase.DONE -> {
+                        binding.syncProgressBanner.visibility = View.VISIBLE
+                        binding.syncSpinner.visibility = View.GONE
+                        binding.syncProgressBar.visibility = View.GONE
+                        binding.syncProgressText.text =
+                            "${p.phaseLabel} — 100%"
+                        binding.syncProgressCounts.text = ""
+
+                        view?.postDelayed({
+                            if (_binding != null &&
+                                OfflineSyncManager.progress.value.phase ==
+                                OfflineSyncManager.Progress.Phase.DONE
+                            ) {
+                                binding.syncProgressBanner.visibility = View.GONE
+                            }
+                        }, 2500)
+                    }
+
+                    else -> binding.syncProgressBanner.visibility = View.GONE
+                }
+            }
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -127,6 +180,8 @@ class HomeFragment : Fragment() {
                 userDisplayName.text = "Hi ${user.firstname}, Good day!"
 
                 swipeRefresh.setOnRefreshListener {
+                    // Explicit refresh → bypass the freshness window
+                    OfflineSyncManager.startAutoSync(requireContext(), force = true)
                     loadRecentSchedule(user)
                 }
 
@@ -197,15 +252,68 @@ class HomeFragment : Fragment() {
                     bindDashboard(data, user)
 
                 } else {
-                    hideLoading()  // ← response not successful, stop spinner
+                    hideLoading()
+
+                    // Server rejected (offline mode / 401 etc.) — fall back to
+                    // the Room replica so the dashboard still shows something.
+                    showCachedDashboard(user)
                 }
 
             } catch (e: Exception) {
                 hideLoading()
-                showNoInternetState() // ← add this; retry fails offline too
+                showCachedDashboard(user)
                 Log.e("HomeFragment_INFO", "Error: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Offline fallback for the dashboard cards: computes the same summary
+     * numbers from the Room replica (year-capped, role-scoped).
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private suspend fun showCachedDashboard(user: VwUser) {
+        val db = SapaDatabase.getInstance(requireContext())
+
+        val (fromDate, toDate) = OfflineSyncManager.cachedDateWindow()
+
+        val slots = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            db.slotDao().getAllOnce()
+        }
+
+        val scoped = slots.filter { s ->
+            val inRole = when (user.roleID) {
+                "UGR0003" -> s.userID == user.userID
+                "UGR0006" -> s.CIID == user.userID
+                "UGR0005" -> s.hospitalID == user.hospitalID
+                else -> true // admins see everything
+            }
+            inRole && !s.dateSlot.isNullOrBlank() &&
+                    s.dateSlot >= fromDate && s.dateSlot <= toDate
+        }
+
+        val summary = DashboardSummary(
+            totalSlots = scoped.size,
+            pendingSchedule = scoped.count { it.slotStatus == 0 },
+            confirmedSchedule = scoped.count { it.slotStatus == 1 },
+            declinedSchedule = scoped.count { it.slotStatus == 2 },
+            cancellationRequest = scoped.count { it.slotStatus == 3 },
+            cancelledSchedule = scoped.count { it.slotStatus == 4 },
+            totalAppointedStudents = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.appointedStudentDao().getAllOnce().size
+            },
+            totalAttendances = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.attendanceDao().getAllOnce().size
+            }
+        )
+
+        if (scoped.isEmpty()) {
+            // Nothing cached at all — show the no-internet state
+            showNoInternetState()
+            return
+        }
+
+        bindDashboard(summary, user)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -320,15 +428,43 @@ class HomeFragment : Fragment() {
                     processSlots(response.body()!!)
                 } else {
                     hideLoading()
-                    Log.e("HomeFragment_INFO", "Failed to fetch slots")
+                    showCachedSlots(user)
+                    Log.e("HomeFragment_INFO", "Failed to fetch slots — showing cached")
                 }
 
             } catch (e: Exception) {
                 hideLoading()
-                showNoInternetState()
+                showCachedSlots(user)
                 Log.e("HomeFragment_INFO", "Error: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Offline fallback for the recent-schedules list: reads the Room replica.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private suspend fun showCachedSlots(user: VwUser) {
+        val db = SapaDatabase.getInstance(requireContext())
+
+        val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            db.slotDao().getAllOnce().map { it.toModel() }
+        }
+
+        if (cached.isEmpty()) {
+            showNoInternetState()
+            return
+        }
+
+        // Same role filter as the API path
+        val scoped = when (user.roleID) {
+            "UGR0003" -> cached.filter { it.userID == user.userID }
+            "UGR0006" -> cached.filter { it.CIID == user.userID }
+            "UGR0005" -> cached.filter { it.hospitalID == user.hospitalID }
+            else -> cached
+        }
+
+        processSlots(scoped)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -346,10 +482,19 @@ class HomeFragment : Fragment() {
         slots = data.filter { it.slotStatus == 1 }
 
         // ✅ Sort by date DESC, most recent first (original behavior)
+        val today = LocalDate.now()
+
         recentSchedules = slots
-            .sortedByDescending {
+            .filter { slot ->
                 try {
-                    LocalDate.parse(it.dateSlot)
+                    LocalDate.parse(slot.dateSlot) <= today
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            .sortedByDescending { slot ->
+                try {
+                    LocalDate.parse(slot.dateSlot)
                 } catch (e: Exception) {
                     LocalDate.MIN
                 }
@@ -361,7 +506,6 @@ class HomeFragment : Fragment() {
         updateEmptyState(recentSchedules)
 
         // ✅ Today's slots computed separately, purely for the banner + dialog
-        val today = LocalDate.now()
         val todaySlots = slots.filter {
             try {
                 LocalDate.parse(it.dateSlot) == today
@@ -499,43 +643,81 @@ class HomeFragment : Fragment() {
                 val api = RetrofitClient.api(requireContext())
                 val year = LocalDate.now().year
 
-                val response = when (user.roleID) {
-                    "UGR0001", "UGR0002" -> api.getSlots(year)
-                    "UGR0003" -> api.getSlotsByUserID(user.userID, year)
-                    "UGR0004" -> api.getSlotsByAppointUserID(user.userID, year)
-                    "UGR0005" -> api.getSlotsByHospitalID(user.hospitalID ?: "", year)
-                    "UGR0006" -> api.getSlotsByCI(user.userID, year)
-                    else -> {
-                        showDialogEmpty(dialogBinding)
-                        return@launch
-                    }
-                }
+                var handled = false
 
-                if (!dialog.isShowing) return@launch // user dismissed while loading
-
-                if (response.isSuccessful && response.body() != null) {
-                    val today = LocalDate.now()
-                    val freshTodaySlots = response.body()!!.filter { slot ->
-                        slot.slotStatus == 1 && try {
-                            LocalDate.parse(slot.dateSlot) == today
-                        } catch (e: Exception) {
-                            false
+                try {
+                    val response = when (user.roleID) {
+                        "UGR0001", "UGR0002" -> api.getSlots(year)
+                        "UGR0003" -> api.getSlotsByUserID(user.userID, year)
+                        "UGR0004" -> api.getSlotsByAppointUserID(user.userID, year)
+                        "UGR0005" -> api.getSlotsByHospitalID(user.hospitalID ?: "", year)
+                        "UGR0006" -> api.getSlotsByCI(user.userID, year)
+                        else -> {
+                            showDialogEmpty(dialogBinding)
+                            return@launch
                         }
                     }
 
-                    todaySlotsCache = freshTodaySlots // keep cache in sync for next open
-                    updateTodayScheduleCard(freshTodaySlots) // keep banner count in sync too
+                    if (!dialog.isShowing) return@launch // user dismissed while loading
 
-                    if (freshTodaySlots.isEmpty()) {
+                    if (response.isSuccessful && response.body() != null) {
+                        val today = LocalDate.now()
+                        val freshTodaySlots = response.body()!!.filter { slot ->
+                            slot.slotStatus == 1 && try {
+                                LocalDate.parse(slot.dateSlot) == today
+                            } catch (e: Exception) {
+                                false
+                            }
+                        }
+
+                        todaySlotsCache = freshTodaySlots // keep cache in sync for next open
+                        updateTodayScheduleCard(freshTodaySlots) // keep banner count in sync too
+
+                        if (freshTodaySlots.isEmpty()) {
+                            showDialogEmpty(dialogBinding)
+                        } else {
+                            val grouped = groupBySchoolHospital(freshTodaySlots)
+                            todayAdapter.updateData(grouped)
+                            showDialogList(dialogBinding)
+                        }
+                        handled = true
+                    }
+                } catch (e: Exception) {
+                    Log.e("HomeFragment_INFO", "Today's schedule fetch failed — trying cache", e)
+                }
+
+                // OFFLINE FALLBACK — today's slots from the Room replica
+                if (!handled && dialog.isShowing) {
+                    val db = SapaDatabase.getInstance(requireContext())
+                    val today = LocalDate.now()
+
+                    val cachedToday = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        db.slotDao().getAllOnce().map { it.toModel() }
+                    }.filter { slot ->
+                        val inRole = when (user.roleID) {
+                            "UGR0003" -> slot.userID == user.userID
+                            "UGR0006" -> slot.CIID == user.userID
+                            "UGR0005" -> slot.hospitalID == user.hospitalID
+                            else -> true
+                        }
+                        inRole && slot.slotStatus == 1 &&
+                                try {
+                                    LocalDate.parse(slot.dateSlot) == today
+                                } catch (e: Exception) {
+                                    false
+                                }
+                    }
+
+                    todaySlotsCache = cachedToday
+                    updateTodayScheduleCard(cachedToday)
+
+                    if (cachedToday.isEmpty()) {
                         showDialogEmpty(dialogBinding)
                     } else {
-                        val grouped = groupBySchoolHospital(freshTodaySlots)
+                        val grouped = groupBySchoolHospital(cachedToday)
                         todayAdapter.updateData(grouped)
                         showDialogList(dialogBinding)
                     }
-                } else {
-                    Log.e("HomeFragment_INFO", "Failed to fetch today's schedule")
-                    showDialogEmpty(dialogBinding)
                 }
 
             } catch (e: Exception) {

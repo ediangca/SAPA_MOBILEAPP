@@ -1,5 +1,6 @@
 package com.ddn.peedo.project.sapa.ui.dashboard.ui.profile
 
+import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Intent
 import android.os.Build
@@ -14,11 +15,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.ddn.peedo.project.sapa.LoginActivity
 import com.ddn.peedo.project.sapa.databinding.FragmentProfileBinding
+import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.repository.OfflineSyncManager
 import com.ddn.peedo.project.sapa.model.VwUser
 import com.ddn.peedo.project.sapa.store.SessionManager
 import com.ddn.peedo.project.sapa.utils.SweetAlertUtil
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -74,6 +79,8 @@ class ProfileFragment : Fragment() {
     fun initComponent() {
         lifecycleScope.launch {
 
+            initOfflineDataCard()
+
             val userJson = session.getUser()
             val privs = session.getPrivileges()
 
@@ -125,6 +132,27 @@ class ProfileFragment : Fragment() {
                     showLogoutConfirmation(session)
                 }
 
+
+                if (user.roleID == "UGR0001" || user.roleID == "UGR0002") {
+                    offlineSchedule.visibility = View.VISIBLE
+                    offlineInterns.visibility = View.VISIBLE
+                    offlineAttendance.visibility = View.VISIBLE
+                    offlineSchool.visibility = View.VISIBLE
+                    offlineUsersDevice.visibility = View.VISIBLE
+                    offlineUpload.visibility = View.VISIBLE
+                }else if(user.roleID == "UGR0003" || user.roleID == "UGR0006"){
+                    offlineSchedule.visibility = View.VISIBLE
+                    offlineInterns.visibility = View.VISIBLE
+                    offlineAttendance.visibility = View.VISIBLE
+                }else if(user.roleID == "UGR0004"){
+                    offlineInterns.visibility = View.VISIBLE
+                }else if(user.roleID == "UGR0005"){
+                    offlineSchedule.visibility = View.VISIBLE
+                    offlineInterns.visibility = View.VISIBLE
+                    offlineAttendance.visibility = View.VISIBLE
+                    offlineUpload.visibility = View.VISIBLE
+                }
+
                 if (user.roleID == "UGR0001" || user.roleID == "UGR0004" || user.roleID == "UGR0006") {
 
                     val qrBitmap = generateQr(user.userID, 300)
@@ -139,6 +167,70 @@ class ProfileFragment : Fragment() {
             Log.d("SESSION", "User: $user")
         }
     }
+
+    // =========================================================
+    // OFFLINE DATA CARD
+    //
+    // Shows what the replication has stored on this device (last sync
+    // time + record counts + pending uploads) and offers a manual
+    // full re-download.
+    // =========================================================
+
+    private fun initOfflineDataCard() {
+        val db = SapaDatabase.getInstance(requireContext())
+
+        lifecycleScope.launch {
+            val counts = withContext(Dispatchers.IO) {
+                OfflineDataCounts(
+                    schedules = db.slotDao().getAllOnce().size,
+                    interns = db.appointedStudentDao().getAllOnce().size,
+                    attendance = db.attendanceDao().getAllOnce().size,
+                    schools = db.schoolDao().getAllOnce().size,
+                    users = db.userDao().getAllOnce().size,
+                    pendingUploads = db.attendanceQueueDao().pendingCount()
+                )
+            }
+
+            val lastSync = OfflineSyncManager.lastSyncTime(requireContext())
+
+            binding.txtLastSync.text = if (lastSync > 0) {
+                val sdf = java.text.SimpleDateFormat("MMM dd, yyyy h:mm a", java.util.Locale.ENGLISH)
+                "Last sync: ${sdf.format(java.util.Date(lastSync))}"
+            } else {
+                "Last sync: never"
+            }
+
+            binding.countSchedules.text = counts.schedules.toString()
+            binding.countInterns.text = counts.interns.toString()
+            binding.countAttendance.text = counts.attendance.toString()
+            binding.countSchools.text = counts.schools.toString()
+            binding.countUsers.text = counts.users.toString()
+            binding.countPendingUploads.text = counts.pendingUploads.toString()
+        }
+
+        binding.btnRedownload.setOnClickListener {
+            SweetAlertUtil.showConfirm(
+                requireContext(),
+                "Re-download Data",
+                "Download a fresh copy of schedules, interns, attendance, " +
+                        "schools and users from the server?\n\nOffline records waiting " +
+                        "to upload are never lost.",
+                confirmText = "Download",
+                cancelText = "Cancel"
+            ) {
+                OfflineSyncManager.startAutoSync(requireContext(), force = true)
+            }
+        }
+    }
+
+    private data class OfflineDataCounts(
+        val schedules: Int,
+        val interns: Int,
+        val attendance: Int,
+        val schools: Int,
+        val users: Int,
+        val pendingUploads: Int
+    )
 
     fun generateQr(content: String, size: Int = 300): Bitmap {
         val writer = QRCodeWriter()
