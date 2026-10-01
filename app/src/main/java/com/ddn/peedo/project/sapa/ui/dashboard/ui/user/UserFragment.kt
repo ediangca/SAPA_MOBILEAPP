@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ddn.peedo.project.sapa.R
 import com.ddn.peedo.project.sapa.data.local.SapaDatabase
+import com.ddn.peedo.project.sapa.data.local.entity.SyncMetaEntity
 import com.ddn.peedo.project.sapa.data.local.entity.UserEntity
 import com.ddn.peedo.project.sapa.data.repository.OfflineSyncManager
 import com.ddn.peedo.project.sapa.databinding.FragmentUserBinding
@@ -213,6 +214,13 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                         "UsersFragment",
                         "After role/school scoping: ${allUsers.size} users remain"
                     )
+
+                    // Keep the offline replica fresh on every online load —
+                    // one cheap upsert. OfflineSyncManager's USERS phase
+                    // also fills this table; this is the self-healing path
+                    // so a failed/interrupted sync never leaves the offline
+                    // directory empty.
+                    persistUserDirectory(allUsers)
 
                     // Build role filter options from actual data, excluding admin/default roles
                     val distinctRoles = allUsers
@@ -434,6 +442,54 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
         dateCreated = dateCreated,
         dateUpdated = dateUpdated
     )
+
+    /** API model → Room entity (offline replica write path). */
+    private fun VwUser.toVwEntity() = UserEntity(
+        userID = userID,
+        username = username,
+        lastname = lastname,
+        firstname = firstname,
+        middlename = middlename,
+        fullname = fullname,
+        email = email,
+        roleID = roleID,
+        rolename = rolename,
+        schoolID = schoolID,
+        schoolName = schoolName,
+        status = status,
+        coorSchoolID = coorSchoolID,
+        coorSchoolCode = coorSchoolCode,
+        coorSchoolName = coorSchoolName,
+        hospitalID = hospitalID,
+        hospitalName = hospitalName,
+        dateCreated = dateCreated,
+        dateUpdated = dateUpdated
+    )
+
+    /**
+     * Upserts the directory this device is allowed to see into the Room
+     * users replica and stamps the USERS sync marker. Merge-only and never
+     * called with an empty list, so an offline directory, once populated,
+     * is never wiped.
+     */
+    private fun persistUserDirectory(users: List<VwUser>) {
+        if (users.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = SapaDatabase.getInstance(requireContext())
+                db.userDao().upsertAll(users.map { it.toVwEntity() })
+                db.syncMetaDao().upsert(
+                    SyncMetaEntity(
+                        moduleName = OfflineSyncManager.USERS_MODULE_NAME,
+                        lastSyncedAt = System.currentTimeMillis()
+                    )
+                )
+                Log.d("UsersFragment", "Persisted ${users.size} users for offline use")
+            } catch (e: Exception) {
+                Log.e("UsersFragment", "Failed to persist user directory for offline use", e)
+            }
+        }
+    }
 
     // ---------- USER DETAIL BOTTOM SHEET ----------
 
