@@ -21,9 +21,15 @@ class UserAdapter(
     private var readOnly: Boolean = false
 ) : ListAdapter<VwUser, UserAdapter.UserViewHolder>(DIFF_CALLBACK) {
 
-    /** Toggles the action buttons (applies on the next bind). */
+    /**
+     * Toggles the action buttons. Re-binds the visible rows immediately —
+     * an unchanged submitted list would otherwise keep its stale buttons
+     * until the next bind (e.g. when the tab flips read-only offline).
+     */
     fun setReadOnly(value: Boolean) {
+        if (readOnly == value) return
         readOnly = value
+        notifyItemRangeChanged(0, itemCount)
     }
 
     interface UserActionListener {

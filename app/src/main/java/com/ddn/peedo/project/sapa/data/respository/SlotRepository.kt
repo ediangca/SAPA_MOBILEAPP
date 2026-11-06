@@ -77,6 +77,7 @@ sealed class SlotResult {
                 val response =
                     when (roleID) {
 
+                        "UGR0000",
                         "UGR0001",
                         "UGR0002" ->
                             api.getSlots(year)

@@ -344,12 +344,16 @@ class LoginActivity : AppCompatActivity() {
                     loading.dismiss()
                 }
                 delay(500)
+
+                Log.e("LoginActivity_INFO", "Exception", e)
+                Log.e("LoginActivity_INFO", "Error message: "+ e.message.toString())
                 withContext(Dispatchers.Main) {
                     SweetAlertUtil.showError(
                         this@LoginActivity,
                         "Error",
-                        "Unable to connect."
+                        "Unable to connect. " + e.message
                     )
+
                 }
             }
         }

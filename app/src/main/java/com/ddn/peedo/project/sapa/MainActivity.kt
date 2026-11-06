@@ -75,9 +75,11 @@ class MainActivity : AppCompatActivity() {
         if (token.isNullOrEmpty()) {
             showConnectRequiredAlert(
                 "No account found on this device. Please connect to the " +
-                        "internet to log in for the first time."
+                        "internet to log in again."
             )
             return
+//            goToLogin()
+//            return
         }
 
         val isExpired = JwtUtils.isTokenExpired(token)

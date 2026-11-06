@@ -64,6 +64,13 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
     private var currentSearchQuery: String = ""
     private var searchDebounceJob: Job? = null
 
+    /**
+     * True while the directory on screen came from the offline Room
+     * replica. Offline the tab is strictly read-only — Approve and Resend
+     * Verification both need the server, so their buttons stay hidden.
+     */
+    private var showingOfflineData = false
+
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -206,6 +213,11 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                 }
 
                 if (response.isSuccessful) {
+                    // Back online — restore each role's normal action
+                    // buttons after an offline (read-only) render.
+                    showingOfflineData = false
+                    adapter.setReadOnly(isViewOnlyDirectory())
+
                     val fetchedUsers = response.body().orEmpty()
                     Log.d("UsersFragment", "Fetched ${fetchedUsers.size} users from API")
 
@@ -391,18 +403,23 @@ class UsersFragment : Fragment(), UserAdapter.UserActionListener {
                         message
                     }
 
-                    if (scoped.isEmpty()) {
-                        showNoInternetState()
-                    } else {
-                        allUsers = scoped
-                        setupRoleSpinner(
-                            scoped.filter { it.roleID !in excludedRoleIds }
-                                .map { it.rolename }
-                                .distinct()
-                                .sorted()
-                        )
-                        applyFilters()
-                    }
+                    // Offline the tab is always read-only: Approve and
+                    // Resend Verification need the server.
+                    showingOfflineData = true
+                    adapter.setReadOnly(true)
+
+                    // Show whatever the replica has — even when this role's
+                    // scope matches nothing. The offline banner above already
+                    // explains the situation; an empty-but-cached directory
+                    // must not masquerade as "no internet".
+                    allUsers = scoped
+                    setupRoleSpinner(
+                        scoped.filter { it.roleID !in excludedRoleIds }
+                            .map { it.rolename }
+                            .distinct()
+                            .sorted()
+                    )
+                    applyFilters()
 
                     hideLoading()
                 }
